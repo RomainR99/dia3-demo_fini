@@ -10,6 +10,9 @@ from config import (
 	MAX_IMAGES,
 	PAGE_TITLE,
 	PERSONAS,
+	#romain2
+	MAIL_ITEMS_IN_PROMPT,
+	RSS_ITEMS_IN_PROMPT,
 )
 # Base de données
 from db import (
@@ -30,12 +33,18 @@ from llm_agent import (
 	combine_speech,
 	first_spoken_sentence,
 	prepare_image,
+	reset_conversation_history,
 	speak,
 	split_for_speech,
 	text_for_speech,
 	transcribe,
+	update_conversation_history,
 	wav_seconds,
 )
+#romain2
+from sujet import SujetError, propose_topics
+#romain3
+from post import PostError, clear_post, draft_post, save_post_edit, spoken_minutes
 #flux RSS
 from rss_watcher import digest_for, refresh_user
 #flux_rss_email
@@ -57,6 +66,8 @@ def require_user():
 		if st.session_state.get("loaded_for") != st.session_state.user_id:
 			st.session_state.messages = load_messages(st.session_state.user_id)
 			st.session_state.loaded_for = st.session_state.user_id
+		#romain1
+		reset_conversation_history(st.session_state.messages)
 		return
 
 	st.subheader("Qui monte à bord ?")
@@ -123,6 +134,16 @@ def show_veille():
 		st.session_state.username = None
 		st.session_state.messages = []
 		st.session_state.loaded_for = None
+		#romain1
+		reset_conversation_history([])
+		#romain2
+		st.session_state.topics = []
+		#romain3
+		st.session_state.chosen_topic = None
+		st.session_state.post_for = None
+		st.session_state.post_text = ""
+		st.session_state.validated_post = ""
+		clear_post()
 		st.rerun()
 
 	st.sidebar.subheader("Flux")
@@ -149,6 +170,8 @@ def show_veille():
 
 	#flux_rss_email
 	_show_gmail(user_id)
+	#romain2
+	_show_topics(user_id)
 
 
 #flux_rss_email
@@ -187,6 +210,114 @@ def _show_gmail(user_id):
 			st.sidebar.markdown(f"[{title}]({link})")
 		else:
 			st.sidebar.write(title)
+
+
+#romain2
+def _show_topics(user_id):
+	"""Affiche les sujets proposés et le bouton pour en rédiger un.
+
+	Les articles viennent des flux RSS et des newsletters déjà filtrées
+	sur le persona. Twitter est appelé dans `propose_topics`.
+	"""
+	st.sidebar.subheader("Sujets")
+	if st.sidebar.button("Proposer des sujets"):
+		persona = st.session_state.persona
+		rss = recent_articles(user_id, RSS_ITEMS_IN_PROMPT, kind="rss")
+		mail = [
+			article for article in recent_articles(user_id, MAIL_ITEMS_IN_PROMPT, kind="email")
+			if matches_theme(persona, article["title"], article["summary"])
+		]
+		#romain2
+		for article in rss:
+			article["kind"] = "rss"
+		for article in mail:
+			article["kind"] = "email"
+		with st.spinner("Recherche de sujets…"):
+			try:
+				topics = propose_topics(persona, rss + mail)
+			except SujetError as error:
+				st.sidebar.warning(str(error))
+				topics = None
+		if topics is not None:
+			st.session_state.topics = topics
+			if not topics:
+				st.sidebar.info("Aucun sujet pour l'instant. Rafraîchis la veille.")
+	for index, topic in enumerate(st.session_state.get("topics") or []):
+		st.sidebar.markdown(f"**{topic['title']}**")
+		st.sidebar.caption(topic["source"])
+		if topic.get("reason"):
+			st.sidebar.write(topic["reason"])
+		#romain3
+		if st.sidebar.button("Rédiger", key=f"draft-{index}"):
+			st.session_state.chosen_topic = topic
+			st.session_state.post_for = None
+
+
+#romain3
+def _post_articles(user_id):
+	"""Reprend les flux et les newsletters du persona, comme pour les sujets.
+
+	`kind` vaut `rss` ou `email`. `draft_post` s'en sert pour ne pas inventer une source.
+	"""
+	persona = st.session_state.persona
+	rss = recent_articles(user_id, RSS_ITEMS_IN_PROMPT, kind="rss")
+	mail = [
+		article for article in recent_articles(user_id, MAIL_ITEMS_IN_PROMPT, kind="email")
+		if matches_theme(persona, article["title"], article["summary"])
+	]
+	for article in rss:
+		article["kind"] = "rss"
+	for article in mail:
+		article["kind"] = "email"
+	return rss + mail
+
+
+#romain3
+def _show_post(user_id):
+	"""Affiche le brouillon du sujet choisi et enregistre la version validée.
+
+	Le brouillon est régénéré quand le sujet change. Le texte modifié dans
+	la zone reste celui que `save_post_edit` garde pour la vidéo.
+	"""
+	topic = st.session_state.get("chosen_topic")
+	if not topic:
+		return
+	topic_key = topic.get("title") or ""
+	if st.session_state.get("post_for") != topic_key:
+		try:
+			with st.spinner("Rédaction du post…"):
+				text = draft_post(
+					st.session_state.persona,
+					topic,
+					_post_articles(user_id),
+				)
+		except PostError as error:
+			st.warning(str(error))
+			#romain3
+			st.session_state.post_for = topic_key
+			st.session_state.post_text = ""
+			return
+		st.session_state.post_text = text
+		st.session_state.post_for = topic_key
+		st.session_state.validated_post = ""
+	st.subheader("Post")
+	st.caption(topic_key)
+	st.text_area(
+		"Post LinkedIn, 2 à 3 minutes à l'oral. Vous pouvez le modifier.",
+		key="post_text",
+		height=320,
+	)
+	minutes = spoken_minutes(st.session_state.post_text)
+	st.caption(f"Environ {minutes:.1f} min à l'oral.".replace(".", ","))
+	if st.button("Enregistrer la version validée"):
+		try:
+			saved = save_post_edit(st.session_state.post_text)
+		except PostError as error:
+			st.warning(str(error))
+		else:
+			st.session_state.validated_post = saved
+	if st.session_state.get("validated_post"):
+		st.success("Version validée enregistrée. C'est elle qui partira en vidéo.")
 
 
 def format_delay(seconds):
@@ -338,6 +469,9 @@ require_user()
 #flux RSS
 show_veille()
 
+#romain3
+_show_post(st.session_state.user_id)
+
 #persona
 for message in st.session_state.messages:
 	with open_message(message["role"]):
@@ -446,6 +580,9 @@ def _handle_turn(user_input):
 		if speech:
 			assistant_message["speech"] = speech
 		st.session_state.messages.append(assistant_message)
+		#romain1
+		update_conversation_history("user", question, images or None)
+		update_conversation_history("assistant", response)
 		# Base de données
 		add_message(st.session_state.user_id, "user", question, images)
 		add_message(st.session_state.user_id, "assistant", response)

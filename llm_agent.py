@@ -97,12 +97,78 @@ class Conversation_Manager:
         with open(file_path, "r") as file:
             return file.read()
 
+    #romain1
+    @staticmethod
+    def encode_image(data):
+        """Transforme des octets JPEG en data URL `data:image/jpeg;base64,...`.
+
+        Ne redimensionne pas. `prepare_image` appelle cette fonction après la réduction.
+        """
+        encoded = base64.standard_b64encode(data).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+
+    #romain1
+    @staticmethod
+    def build_content(text, images):
+        """Construit le `content` d'un message Groq.
+
+        Sans image, renvoie le texte. Avec des images, renvoie une liste :
+        un bloc texte, puis un bloc `image_url` par photo, au plus `MAX_IMAGES`.
+        """
+        if not images:
+            return text
+        blocks = [{"type": "text", "text": text}]
+        for url in images[:MAX_IMAGES]:
+            blocks.append({
+                "type": "image_url",
+                "image_url": {"url": url},
+            })
+        return blocks
+
+    #romain1
+    @staticmethod
+    def history_has_image(history, images):
+        """Dit si cette requête contient une photo.
+
+        Vrai si la question en cours a des images, ou si un tour déjà eu en a.
+        `ask_llm` choisit alors le modèle vision.
+        """
+        if images:
+            return True
+        for message in history:
+            if message.get("images"):
+                return True
+        return False
+
+    #romain1
+    def get_conversation_history(self):
+        """Renvoie une copie des tours gardés sur l'objet.
+
+        Modifier la liste renvoyée ne change pas l'objet.
+        `ask_llm` l'utilise seulement quand aucun historique n'est passé.
+        """
+        return list(self.conversation_history)
+
+    #romain1
+    def update_conversation_history(self, role, content, images=None):
+        """Ajoute un tour à la fin de l'historique de l'objet.
+
+        `images` sont des data URL déjà produites par `prepare_image`.
+        On l'appelle après la réponse complète, une fois pour l'utilisateur
+        et une fois pour l'assistant.
+        """
+        message = {"role": role, "content": content}
+        if images:
+            message["images"] = list(images)
+        self.conversation_history.append(message)
+
     #flux RSS
     #persona
     def ask_llm(self, question, history=None, images=None, voice=False, veille="", context_path=None):
         # Liste vide par défaut : on n'en crée pas une partagée entre les appels.
+        #romain1
         if history is None:
-            history = []
+            history = self.get_conversation_history()
         if images is None:
             images = []
 
@@ -124,13 +190,15 @@ class Conversation_Manager:
             *_history_for_api(history, images),
             {
                 "role": "user",
-                "content": _user_content(question, images),
+                #romain1
+                "content": self.build_content(question, images),
             },
         ]
 
         # Un bloc image impose le modèle vision, y compris pour une question de suivi.
         # Sans image, le mode vocal prend le modèle le plus petit.
-        sees_image = any(isinstance(message["content"], list) for message in messages)
+        #romain1
+        sees_image = self.history_has_image(history, images)
         if sees_image:
             model = VISION_MODEL
         elif voice:
@@ -233,6 +301,11 @@ agent = Conversation_Manager()
 
 
 def prepare_image(raw):
+    """Réduit une photo puis la passe à `encode_image`.
+
+    Le plus grand côté est ramené à `MAX_SIDE`. Le JPEG reste sous `MAX_JPEG_BYTES`.
+    Un fichier illisible lève `AgentError` avant l'appel Groq.
+    """
     # JPEG plus petit, et le type de la data URL correspond aux octets envoyés.
     try:
         image = Image.open(io.BytesIO(raw))
@@ -263,20 +336,13 @@ def prepare_image(raw):
             Image.Resampling.LANCZOS,
         )
 
-    encoded = base64.standard_b64encode(data).decode("ascii")
-    return f"data:image/jpeg;base64,{encoded}"
+    #romain1
+    return agent.encode_image(data)
 
 
+#romain1
 def _user_content(text, images):
-    if not images:
-        return text
-    blocks = [{"type": "text", "text": text}]
-    for url in images[:MAX_IMAGES]:
-        blocks.append({
-            "type": "image_url",
-            "image_url": {"url": url},
-        })
-    return blocks
+    return agent.build_content(text, images)
 
 
 def _history_for_api(history, current_images):
@@ -294,7 +360,8 @@ def _history_for_api(history, current_images):
         if message["role"] == "user" and images and index == last_image_index:
             api_messages.append({
                 "role": "user",
-                "content": _user_content(text, images),
+                #romain1
+                "content": agent.build_content(text, images),
             })
             continue
         if message["role"] == "user" and images:
@@ -326,6 +393,52 @@ def ask_llm(question, history=None, images=None, voice=False, veille="", context
 
 def transcribe(audio):
     return agent.transcribe(audio)
+
+
+#romain1
+def encode_image(data):
+    """Même rôle que `Conversation_Manager.encode_image`."""
+    return agent.encode_image(data)
+
+
+#romain1
+def build_content(text, images):
+    """Même rôle que `Conversation_Manager.build_content`."""
+    return agent.build_content(text, images)
+
+
+#romain1
+def history_has_image(history, images):
+    """Même rôle que `Conversation_Manager.history_has_image`."""
+    return agent.history_has_image(history, images)
+
+
+#romain1
+def get_conversation_history():
+    """Même rôle que `Conversation_Manager.get_conversation_history`."""
+    return agent.get_conversation_history()
+
+
+#romain1
+def update_conversation_history(role, content, images=None):
+    """Même rôle que `Conversation_Manager.update_conversation_history`."""
+    agent.update_conversation_history(role, content, images=images)
+
+
+#romain1
+def reset_conversation_history(messages):
+    """Remplace l'historique de l'objet par les tours d'un compte.
+
+    À appeler quand l'utilisateur se connecte, pour ne pas mélanger deux comptes.
+    `messages` vient de la session ou de la base.
+    """
+    agent.conversation_history = []
+    for message in messages:
+        agent.update_conversation_history(
+            message["role"],
+            message.get("content") or "",
+            message.get("images"),
+        )
 
 
 _CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)

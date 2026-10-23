@@ -45,7 +45,7 @@ MAX_RETRIES = 1
 
 PAGE_TITLE = "Jarvis"
 APP_TITLE = "Barbe-Quasar"
-CHAT_PLACEHOLDER = "Que veux tu moussaillon ?"
+CHAT_PLACEHOLDER = "Quel sujet voulez-vous publier ?"
 IMAGE_ONLY_QUESTION = "Que vois-tu sur cette image ?"
 
 # Base de données
@@ -69,6 +69,20 @@ MAIL_SUBJECT = "newsletter"
 MAIL_MAX = 30
 MAIL_ITEMS_IN_PROMPT = 8
 MAIL_TIMEOUT = 60
+
+#romain2
+X_TOKEN_KEY = "X_BEARER_TOKEN"
+# France. L'API X ne connaît pas le persona, seulement un lieu.
+WOEID_FRANCE = 23424819
+TRENDS_TIMEOUT = 8
+MAX_TRENDS = 10
+MAX_TOPICS = 5
+
+#romain3
+# 150 mots par minute à l'oral. 280 à 480 mots font environ 2 à 3 minutes.
+POST_WORDS_PER_MINUTE = 150
+POST_MIN_WORDS = 280
+POST_MAX_WORDS = 480
 
 #flux_rss_email
 # Mots sans accent. La newsletter est retenue si l'un d'eux est un mot du sujet ou du résumé.
