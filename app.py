@@ -35,7 +35,6 @@ from db import (
 	recent_articles,
 	set_feed_active,
 	#romain6
-	disconnect_gamma,
 	gamma_view,
 	save_gamma_languages,
 )
@@ -71,7 +70,7 @@ from rss_watcher import digest_for, refresh_user
 #flux_rss_email
 from mail_watcher import MailError, connect_mailbox, matches_theme
 #romain6
-from gamma_client import GammaError, connect_account, refresh_generation, send_approved
+from gamma_client import GammaError, owner_key, refresh_generation, send_approved
 
 # Départ du chrono : le script repart quand l'enregistrement vient d'être envoyé.
 run_started = time.perf_counter()
@@ -171,7 +170,6 @@ def show_veille():
 		st.session_state.offered_topic = None
 		st.session_state.video_source = ""
 		#romain6
-		st.session_state.pop("gamma_api_key", None)
 		st.session_state.pop("gamma_slide_language", None)
 		st.session_state.pop("gamma_subtitle_language", None)
 		st.rerun()
@@ -244,13 +242,18 @@ def _show_gmail(user_id):
 
 #romain6
 def _show_gamma(user_id):
-	"""Réglages Gamma : clé du compte, langue des slides, langue des sous-titres.
+	"""Réglages Gamma : langue des slides et langue des sous-titres.
 
-	La langue des slides est aussi celle de la vidéo. Les sous-titres ont
-	leur propre langue, français par défaut. La clé n'est pas réaffichée.
+	La clé est celle du projet, dans .env. Tous les comptes créent les
+	slides avec elle. La langue des slides est aussi celle de la vidéo.
+	Les sous-titres ont leur propre langue, français par défaut.
 	"""
 	st.sidebar.subheader("Réglages")
 	view = gamma_view(user_id)
+	if owner_key():
+		st.sidebar.caption("Les slides sont créées avec la clé Gamma du projet.")
+	else:
+		st.sidebar.warning("Mets GAMMA_API_KEY dans le fichier .env.")
 	if "gamma_slide_language" not in st.session_state:
 		st.session_state.gamma_slide_language = view["slide_language"]
 	if "gamma_subtitle_language" not in st.session_state:
@@ -270,24 +273,6 @@ def _show_gamma(user_id):
 	)
 	if slide != view["slide_language"] or subtitles != view["subtitle_language"]:
 		save_gamma_languages(user_id, slide, subtitles)
-	if view["connected"]:
-		st.sidebar.caption("Gamma connecté.")
-	st.sidebar.text_input(
-		"Clé API Gamma",
-		type="password",
-		key="gamma_api_key",
-	)
-	if st.sidebar.button("Connecter Gamma"):
-		try:
-			connect_account(user_id, st.session_state.get("gamma_api_key") or "")
-		except GammaError as error:
-			st.sidebar.warning(str(error))
-		else:
-			st.sidebar.success("Gamma connecté.")
-			st.rerun()
-	if view["connected"] and st.sidebar.button("Déconnecter Gamma"):
-		disconnect_gamma(user_id)
-		st.rerun()
 	if view.get("job_status") == "pending" and st.sidebar.button("Vérifier les slides"):
 		try:
 			refresh_generation(user_id)

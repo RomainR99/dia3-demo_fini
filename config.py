@@ -88,6 +88,8 @@ AUDIO_RETRY = "Refaites l'audio"
 
 #romain6
 # Une slide toutes les 10 secondes. 2 min 30 font 15 slides, pas plus.
+# La clé est celle du propriétaire, dans .env. Tous les comptes l'utilisent.
+GAMMA_KEY = "GAMMA_API_KEY"
 GAMMA_API_BASE = "https://public-api.gamma.app/v1.0"
 SLIDE_SECONDS = 10
 VIDEO_MAX_SECONDS = 150

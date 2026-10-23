@@ -1,12 +1,14 @@
-"""Slides Gamma du compte, puis sous-titres calés sur les slides."""
+"""Slides Gamma du propriétaire, puis sous-titres calés sur les slides."""
 
 import json
 import math
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
 
+import certifi
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -15,6 +17,7 @@ from config import (
     DEFAULT_SUBTITLE_LANGUAGE,
     ENV_KEY,
     GAMMA_API_BASE,
+    GAMMA_KEY,
     GAMMA_LANGUAGES,
     GAMMA_POLL_SECONDS,
     GAMMA_POLL_TRIES,
@@ -25,10 +28,8 @@ from config import (
     VIDEO_MAX_SECONDS,
 )
 from db import (
-    gamma_api_key,
     gamma_view,
     save_gamma_job,
-    save_gamma_key,
 )
 
 load_dotenv()
@@ -60,16 +61,17 @@ def slide_count(text):
 
 
 #romain6
-def connect_account(user_id, api_key):
-    """Enregistre la clé API du Gamma personnel.
+def owner_key():
+    """Clé Gamma du propriétaire, lue dans .env.
 
-    La clé n'est pas affichée ensuite. Une clé trop courte est refusée
-    avant d'être écrite.
+    Tous les comptes créent les slides avec cette clé. Elle n'est pas
+    demandée dans la page, ni écrite dans la base.
     """
-    key = (api_key or "").strip()
-    if len(key) < 8:
-        raise GammaError("Colle la clé API Gamma du compte.")
-    save_gamma_key(user_id, key)
+    load_dotenv()
+    key = os.environ.get(GAMMA_KEY, "").strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in "'\"":
+        key = key[1:-1].strip()
+    return key
 
 
 #romain6
@@ -86,14 +88,17 @@ def _request(method, path, api_key, payload=None):
         headers=headers,
         method=method,
     )
+    #romain6
+    # Python.org sur macOS n'a pas les certificats du système. certifi les fournit.
+    context = ssl.create_default_context(cafile=certifi.where())
     try:
-        with urllib.request.urlopen(request, timeout=GAMMA_TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=GAMMA_TIMEOUT, context=context) as response:
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
-            raise GammaError("Clé Gamma refusée. Vérifie la clé du compte.") from error
+            raise GammaError("Clé Gamma refusée. Vérifie GAMMA_API_KEY dans le fichier .env.") from error
         if error.code == 402:
-            raise GammaError("Plus assez de crédits Gamma sur ce compte.") from error
+            raise GammaError("Plus assez de crédits Gamma sur le compte du projet.") from error
         raise GammaError("Gamma n'a pas accepté la demande. Réessaie.") from error
     except urllib.error.URLError as error:
         raise GammaError("Gamma ne répond pas. Réessaie dans un instant.") from error
@@ -253,18 +258,19 @@ def build_subtitles(user_id, text, subtitle_language, count):
 
 #romain6
 def send_approved(user_id, text):
-    """Envoie le texte approuvé au Gamma du compte, puis écrit les sous-titres.
+    """Envoie le texte approuvé avec la clé Gamma du propriétaire.
 
-    La langue des slides est celle des réglages : la vidéo parlera la même.
-    Les sous-titres suivent l'autre réglage, français par défaut.
-    Si Gamma n'a pas fini, `status` vaut `pending` et `gamma_url` est vide.
+    La langue des slides est celle des réglages de l'utilisateur : la vidéo
+    parlera la même. Les sous-titres suivent l'autre réglage, français
+    par défaut. Si Gamma n'a pas fini, `status` vaut `pending` et
+    `gamma_url` est vide.
     """
     approved = (text or "").strip()
     if not approved:
         raise GammaError("Approuve le texte avant de l'envoyer à Gamma.")
-    key = gamma_api_key(user_id)
+    key = owner_key()
     if not key:
-        raise GammaError("Connecte d'abord le Gamma du compte, dans les réglages.")
+        raise GammaError("Mets la clé Gamma du projet dans GAMMA_API_KEY, dans le fichier .env.")
     view = gamma_view(user_id)
     slide_language = view["slide_language"] or DEFAULT_SLIDE_LANGUAGE
     subtitle_language = view["subtitle_language"] or DEFAULT_SUBTITLE_LANGUAGE
@@ -289,7 +295,7 @@ def send_approved(user_id, text):
 #romain6
 def refresh_generation(user_id):
     """Relit une génération encore en cours et met le lien à jour."""
-    key = gamma_api_key(user_id)
+    key = owner_key()
     view = gamma_view(user_id)
     generation_id = view.get("generation_id") or ""
     if not key or not generation_id:

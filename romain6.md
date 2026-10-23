@@ -1,6 +1,6 @@
 # Gamma — slides du compte, sous-titres
 
-**8 fonctions** à coder pour ce lot : `slide_count`, `connect_account`, `create_generation`, `poll_generation`, `build_subtitles`, `send_approved`, `refresh_generation`, `_show_gamma`. Autour : `_request`, `_chunks`, `_stamp`, `_translate`, et les fonctions de base `gamma_view`, `gamma_api_key`, `save_gamma_key`, `save_gamma_languages`, `save_gamma_job`, `disconnect_gamma`.
+**8 fonctions** à coder pour ce lot : `slide_count`, `owner_key`, `create_generation`, `poll_generation`, `build_subtitles`, `send_approved`, `refresh_generation`, `_show_gamma`. Autour : `_request`, `_chunks`, `_stamp`, `_translate`, et les fonctions de base `gamma_view`, `save_gamma_languages`, `save_gamma_job`.
 
 **Environ 6 heures** sans IA, en débutant. Le temps passe dans la clé API et dans l'attente de Gamma, pas dans le calcul des 15 slides.
 
@@ -8,7 +8,7 @@ Ce guide part de zéro pour ce lot. Chaque changement porte le commentaire `#rom
 
 ## Ce que l'utilisateur voit
 
-1. Dans les réglages : la langue des slides, la langue des sous-titres, la clé API Gamma.
+1. Dans les réglages : la langue des slides et la langue des sous-titres. La clé n'apparaît pas.
 2. La langue des slides est aussi la langue de la vidéo.
 3. Les sous-titres sont en français, sauf si une autre langue est choisie.
 4. **Créer le post** approuve le texte modifié.
@@ -25,9 +25,9 @@ Gamma refuse le mot de passe du site. Il faut une clé API, propre au compte.
 2. L'API est proposée sur les offres qui incluent les crédits de génération. Sans crédits, Gamma répond qu'il n'en reste plus.
 3. Dans les réglages du compte, ouvre la page des clés API : [developers.gamma.app](https://developers.gamma.app).
 4. Crée une clé. Copie-la une fois : Gamma ne la réaffiche pas toujours.
-5. Dans la barre de l'application, colle-la dans **Clé API Gamma**, puis **Connecter Gamma**.
+5. Colle-la dans `.env`, sur la ligne `GAMMA_API_KEY=`. Le fichier reste sur la machine : git l'ignore.
 
-La clé est enregistrée dans `data/jarvis.db`, comme le mot de passe d'application Gmail. Elle ne va ni dans git, ni dans ce guide, ni dans `.env`.
+Tous les comptes de l'application créent les slides avec cette clé. Les crédits dépensés sont ceux de ce compte Gamma. Chaque utilisateur garde ses langues et son lien de slides.
 
 ## Ordre
 
@@ -94,11 +94,10 @@ CREATE TABLE IF NOT EXISTS gamma_accounts (
 | Fonction | Rôle |
 | --- | --- |
 | `gamma_view` | langues, lien, statut. Jamais la clé. |
-| `gamma_api_key` | la clé, seulement pour l'appel HTTP. |
-| `save_gamma_key` | enregistre la clé, garde les langues. |
-| `save_gamma_languages` | langue des slides et langue des sous-titres. |
+| `save_gamma_languages` | langue des slides et langue des sous-titres, par compte. |
 | `save_gamma_job` | identifiant, statut, lien, nombre de slides, chemin du `.srt`. |
-| `disconnect_gamma` | oublie la clé et le lien. Les langues restent. |
+
+La clé n'est pas dans cette table. `owner_key` la lit dans `.env`, variable `GAMMA_API_KEY`.
 
 Les docstrings de ces fonctions sont dans `db.py`.
 
@@ -124,7 +123,7 @@ Le fichier complet du dépôt est `gamma_client.py`. Les noms à avoir, dans l'o
 
 1. `GammaError`
 2. `slide_count`
-3. `connect_account`
+3. `owner_key`
 4. `_request`
 5. `create_generation`
 6. `poll_generation`
@@ -137,11 +136,11 @@ Le fichier complet du dépôt est `gamma_client.py`. Les noms à avoir, dans l'o
 
 ## La page
 
-Imports : `GAMMA_LANGUAGES`, `disconnect_gamma`, `gamma_view`, `save_gamma_languages`, `GammaError`, `connect_account`, `refresh_generation`, `send_approved`.
+Imports : `GAMMA_LANGUAGES`, `gamma_view`, `save_gamma_languages`, `GammaError`, `owner_key`, `refresh_generation`, `send_approved`.
 
-`_show_gamma(user_id)` est appelée dans la barre, après Gmail. Deux listes : **Langue des slides et de la vidéo**, **Langue des sous-titres**. Un champ mot de passe pour la clé. **Connecter Gamma**. **Déconnecter Gamma**. **Vérifier les slides** seulement si le statut est `pending`.
+`_show_gamma(user_id)` est appelée dans la barre, après Gmail. Deux listes : **Langue des slides et de la vidéo**, **Langue des sous-titres**. Pas de champ pour la clé. **Vérifier les slides** seulement si le statut est `pending`. Si `GAMMA_API_KEY` est vide, la barre le dit.
 
-Quitter le compte retire les clés de formulaire `gamma_api_key`, `gamma_slide_language`, `gamma_subtitle_language`, pour ne pas les laisser au compte suivant sur le même navigateur.
+Quitter le compte retire `gamma_slide_language` et `gamma_subtitle_language`, pour ne pas les laisser au compte suivant sur le même navigateur.
 
 Sous le post, une fois le texte approuvé (`video_source`) :
 
@@ -175,9 +174,9 @@ data/subtitles/
 | `slide_count("")` | `0` |
 | `slide_count` de 150 mots | `6` slides (60 secondes) |
 | `slide_count` de 480 mots | `15` slides, pas 20 |
-| Clé trop courte | « Colle la clé API Gamma du compte. » Rien n'est écrit. |
+| `GAMMA_API_KEY` vide | « Mets la clé Gamma du projet dans GAMMA_API_KEY, dans le fichier .env. » |
 | **Envoyer à Gamma** sans texte approuvé | « Approuve le texte avant de l'envoyer à Gamma. » |
-| **Envoyer à Gamma** sans clé | « Connecte d'abord le Gamma du compte, dans les réglages. » |
+| **Envoyer à Gamma** sans clé | le même message que la ligne `GAMMA_API_KEY` vide |
 | Langue des slides = anglais, sous-titres = français | Les slides partent en `en`. Le `.srt` reste en français, une ligne toutes les 10 secondes. |
 | Génération encore `pending` | **Vérifier les slides** redemande le lien. |
 
@@ -193,13 +192,13 @@ L'envoi réel se vérifie dans le navigateur, avec une vraie clé et des crédit
 
 ## Pièges
 
-Mettre la clé dans `.env` ou dans ce guide la partage avec tout le dépôt. Elle reste dans la base locale, une par compte.
+La clé vit dans `.env`, pas dans ce guide et pas dans la base. `.env` n'est pas versionné. La coller ici la partagerait avec le dépôt.
 
 `numCards` sans plafond dépasse 2 minutes 30 dès que le post oral dure plus longtemps. `slide_count` coupe à 15.
 
 Demander un export `png` ou `pdf` renvoie une adresse que n'importe qui peut télécharger pendant une semaine. Ce lot ne demande pas d'export. Il garde `gammaUrl`.
 
-Afficher la clé dans la barre après connexion la laisse visible. Le champ reste vide. Seul « Gamma connecté. » confirme.
+Afficher la clé dans la barre la laisse visible. La page ne la demande pas.
 
 Écrire le `.srt` avant de savoir que Gamma a accepté la clé fait un fichier inutile si la clé est refusée. Ici les sous-titres sont écrits après la vérification de la clé, avant l'attente longue. Si Gamma échoue ensuite, le fichier existe quand même : il correspond au texte approuvé.
 
