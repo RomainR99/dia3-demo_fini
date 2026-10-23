@@ -67,7 +67,7 @@ def owner_key():
     Tous les comptes créent les slides avec cette clé. Elle n'est pas
     demandée dans la page, ni écrite dans la base.
     """
-    load_dotenv()
+    load_dotenv(override=True)
     key = os.environ.get(GAMMA_KEY, "").strip()
     if len(key) >= 2 and key[0] == key[-1] and key[0] in "'\"":
         key = key[1:-1].strip()
@@ -78,7 +78,13 @@ def owner_key():
 def _request(method, path, api_key, payload=None):
     """Appelle l'API Gamma. La clé part dans l'en-tête, pas dans l'adresse."""
     body = None
-    headers = {"X-API-KEY": api_key, "Accept": "application/json"}
+    headers = {
+        "X-API-KEY": api_key,
+        "Accept": "application/json",
+        #romain6
+        # Sans ce nom, Cloudflare répond 403 et la clé paraît refusée.
+        "User-Agent": "Barbe-Quasar/1.0",
+    }
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -95,8 +101,10 @@ def _request(method, path, api_key, payload=None):
         with urllib.request.urlopen(request, timeout=GAMMA_TIMEOUT, context=context) as response:
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
-        if error.code in (401, 403):
+        if error.code == 401:
             raise GammaError("Clé Gamma refusée. Vérifie GAMMA_API_KEY dans le fichier .env.") from error
+        if error.code == 403:
+            raise GammaError("Gamma bloque l'appel. Réessaie dans un instant.") from error
         if error.code == 402:
             raise GammaError("Plus assez de crédits Gamma sur le compte du projet.") from error
         raise GammaError("Gamma n'a pas accepté la demande. Réessaie.") from error
