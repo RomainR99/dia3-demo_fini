@@ -1,4 +1,5 @@
 import base64
+import io
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +14,11 @@ from config import (
 	#romain2
 	MAIL_ITEMS_IN_PROMPT,
 	RSS_ITEMS_IN_PROMPT,
+	#romain4
+	AUDIO_MIN_PEAK,
+	AUDIO_MIN_SECONDS,
+	AUDIO_RETRY,
+	INSPIRE_COUNT,
 )
 # Base de données
 from db import (
@@ -44,7 +50,16 @@ from llm_agent import (
 #romain2
 from sujet import SujetError, propose_topics
 #romain3
-from post import PostError, clear_post, draft_post, save_post_edit, spoken_minutes
+from post import (
+	PostError,
+	clear_post,
+	draft_post,
+	post_intent,
+	save_post_edit,
+	spoken_minutes,
+)
+#romain4
+from hold_talk import hold_to_talk
 #flux RSS
 from rss_watcher import digest_for, refresh_user
 #flux_rss_email
@@ -144,6 +159,8 @@ def show_veille():
 		st.session_state.post_text = ""
 		st.session_state.validated_post = ""
 		clear_post()
+		#romain4
+		st.session_state.offered_topic = None
 		st.rerun()
 
 	st.sidebar.subheader("Flux")
@@ -170,8 +187,6 @@ def show_veille():
 
 	#flux_rss_email
 	_show_gmail(user_id)
-	#romain2
-	_show_topics(user_id)
 
 
 #flux_rss_email
@@ -212,22 +227,45 @@ def _show_gmail(user_id):
 			st.sidebar.write(title)
 
 
-#romain2
-def _show_topics(user_id):
-	"""Affiche les sujets proposés et le bouton pour en rédiger un.
+#romain4
+def _choose_topic(topic):
+	"""Retient le sujet et force une nouvelle rédaction.
 
-	Les articles viennent des flux RSS et des newsletters déjà filtrées
-	sur le persona. Twitter est appelé dans `propose_topics`.
+	`post_for` vide fait rappeler `draft_post` dans `_show_post`.
 	"""
-	st.sidebar.subheader("Sujets")
-	if st.sidebar.button("Proposer des sujets"):
+	st.session_state.chosen_topic = topic
+	st.session_state.post_for = None
+
+
+#romain4
+def _remember_turn(question, reply):
+	"""Garde l'accord de l'utilisateur sans appeler l'agent.
+
+	La phrase dite et la réponse courte restent dans l'historique.
+	"""
+	st.session_state.messages.append({"role": "user", "content": question})
+	st.session_state.messages.append({"role": "assistant", "content": reply})
+	update_conversation_history("user", question)
+	update_conversation_history("assistant", reply)
+	add_message(st.session_state.user_id, "user", question, [])
+	add_message(st.session_state.user_id, "assistant", reply)
+
+
+#romain4
+def _show_topics(user_id):
+	"""Affiche Inspirer, puis trois titres, sous le micro.
+
+	Un clic sur Inspirer interroge la veille. Un clic sur un des trois
+	titres rédige le post tout de suite. Si un sujet a été donné dans
+	la conversation, le bouton « Créer le post » fait la même chose.
+	"""
+	if st.button("Inspirer", key="inspire"):
 		persona = st.session_state.persona
 		rss = recent_articles(user_id, RSS_ITEMS_IN_PROMPT, kind="rss")
 		mail = [
 			article for article in recent_articles(user_id, MAIL_ITEMS_IN_PROMPT, kind="email")
 			if matches_theme(persona, article["title"], article["summary"])
 		]
-		#romain2
 		for article in rss:
 			article["kind"] = "rss"
 		for article in mail:
@@ -236,21 +274,22 @@ def _show_topics(user_id):
 			try:
 				topics = propose_topics(persona, rss + mail)
 			except SujetError as error:
-				st.sidebar.warning(str(error))
+				st.warning(str(error))
 				topics = None
 		if topics is not None:
-			st.session_state.topics = topics
-			if not topics:
-				st.sidebar.info("Aucun sujet pour l'instant. Rafraîchis la veille.")
+			st.session_state.topics = list(topics)[:INSPIRE_COUNT]
+			if not st.session_state.topics:
+				st.info("Aucun sujet pour l'instant. Rafraîchis la veille.")
 	for index, topic in enumerate(st.session_state.get("topics") or []):
-		st.sidebar.markdown(f"**{topic['title']}**")
-		st.sidebar.caption(topic["source"])
-		if topic.get("reason"):
-			st.sidebar.write(topic["reason"])
-		#romain3
-		if st.sidebar.button("Rédiger", key=f"draft-{index}"):
-			st.session_state.chosen_topic = topic
-			st.session_state.post_for = None
+		#romain4
+		if st.button(topic["title"], key=f"inspire-{index}"):
+			_choose_topic(topic)
+	offered = st.session_state.get("offered_topic")
+	#romain4
+	if offered and st.session_state.get("post_for") != offered.get("title"):
+		st.caption(offered.get("title") or "")
+		if st.button("Créer le post", key="create_post"):
+			_choose_topic(offered)
 
 
 #romain3
@@ -348,7 +387,8 @@ def voice_line(stt_s, llm_s, tts_s, audio_s=None):
 	return line
 
 
-def show_message(message):
+def show_message(message, autoplay=False):
+	"""Affiche un tour. `autoplay` relance la voix après un rafraîchissement."""
 	for data_url in message.get("images") or []:
 		encoded = data_url.split(",", 1)[1]
 		st.image(base64.b64decode(encoded))
@@ -368,7 +408,8 @@ def show_message(message):
 			message["total_s"],
 		))
 	if message.get("speech"):
-		st.audio(message["speech"], format="audio/wav")
+		#romain4
+		st.audio(message["speech"], format="audio/wav", autoplay=autoplay)
 
 
 def play_chained(wav, speech_chunks, ready_at):
@@ -379,7 +420,13 @@ def play_chained(wav, speech_chunks, ready_at):
 	if ready_at and now < ready_at:
 		time.sleep(ready_at - now)
 	speech_chunks.append(wav)
-	st.audio(wav, format="audio/wav", autoplay=True)
+	#romain4
+	# Le rafraîchissement qui affiche « Créer le post » rejoue la voix une fois.
+	st.audio(
+		wav,
+		format="audio/wav",
+		autoplay=not st.session_state.get("refresh_composer"),
+	)
 	started = time.perf_counter()
 	return started + wav_seconds(wav), started - run_started
 
@@ -473,38 +520,134 @@ show_veille()
 _show_post(st.session_state.user_id)
 
 #persona
-for message in st.session_state.messages:
+#romain4
+play_last = st.session_state.pop("play_last_speech", False)
+history = st.session_state.messages
+last = len(history) - 1
+for index, message in enumerate(history):
 	with open_message(message["role"]):
-		show_message(message)
+		show_message(
+			message,
+			autoplay=play_last and index == last and message["role"] == "assistant",
+		)
 
-user_input = st.chat_input(
-	CHAT_PLACEHOLDER,
-	accept_file="multiple",
-	file_type=["png", "jpg", "jpeg"],
-	accept_audio=True,
-)
+#romain4
+def _show_composer():
+	"""Remplace la barre de chat par un clavier et un micro à maintenir.
 
-def _handle_turn(user_input):
+	Le clavier ouvre une zone de texte. Le micro enregistre tant que le bouton
+	est enfoncé et envoie l'audio au relâchement. Un appui trop court ou sans
+	voix affiche `AUDIO_RETRY` et n'appelle pas l'agent. Sous le micro :
+	Inspirer, les trois titres, et « Créer le post » si un sujet a été donné.
+	"""
+	if st.session_state.pop("clear_keyboard", False):
+		st.session_state.keyboard_text = ""
+	columns = st.columns([1, 2])
+	with columns[0]:
+		if st.button("Clavier", key="toggle_keyboard"):
+			st.session_state.show_keyboard = not st.session_state.get("show_keyboard")
+	with columns[1]:
+		recording = hold_to_talk(
+			AUDIO_MIN_SECONDS,
+			AUDIO_MIN_PEAK,
+			key="hold_mic",
+		)
+		#romain4
+		_show_topics(st.session_state.user_id)
+	if st.session_state.get("show_keyboard"):
+		st.text_area(CHAT_PLACEHOLDER, key="keyboard_text")
+		uploads = st.file_uploader(
+			"Photos",
+			type=["png", "jpg", "jpeg"],
+			accept_multiple_files=True,
+			key="keyboard_files",
+		)
+		if st.button("Envoyer", key="send_keyboard"):
+			#romain4
+			try:
+				_handle_turn(
+					st.session_state.get("keyboard_text") or "",
+					files=uploads,
+				)
+			except AgentError as error:
+				st.error(str(error))
+			else:
+				st.session_state.pop("refresh_composer", None)
+				st.session_state.clear_keyboard = True
+				st.rerun()
+	if not recording or recording.get("id") == st.session_state.get("last_audio_id"):
+		return
+	st.session_state.last_audio_id = recording["id"]
+	#romain4
+	if recording.get("error") in {"short", "silent"}:
+		st.warning(AUDIO_RETRY)
+		return
+	if recording.get("error"):
+		st.warning("Le micro est bloqué. Autorisez-le, puis recommencez.")
+		return
+	raw = base64.b64decode(recording["audio"])
+	try:
+		_handle_turn("", audio=io.BytesIO(raw))
+	except AgentError as error:
+		st.error(str(error))
+	else:
+		#romain4
+		if st.session_state.pop("refresh_composer", False):
+			st.rerun()
+
+
+def _handle_turn(text="", audio=None, files=None):
+	"""Envoie un texte ou un audio à l'agent.
+
+	`text` vient du clavier. `audio` est un WAV déjà jugé assez long.
+	Une transcription vide affiche le même message qu'un appui raté.
+	« oui », « vas-y » ou une autre indication rédige le sujet déjà donné.
+	Une demande explicite (« rédige un post sur… ») rédige tout de suite.
+	"""
 	parts = []
-	typed = user_input.text.strip()
+	typed = (text or "").strip()
 	if typed:
 		parts.append(typed)
 	# L'audio n'entre pas dans l'historique : seule la transcription, comme un texte tapé.
-	had_audio = user_input.audio is not None
+	had_audio = audio is not None
 	transcript_s = None
 	stt_s = None
 	if had_audio:
 		stt_started = time.perf_counter()
-		spoken = transcribe(user_input.audio)
+		spoken = transcribe(audio)
 		stt_s = time.perf_counter() - stt_started
 		transcript_s = time.perf_counter() - run_started
-		if spoken:
-			parts.append(spoken)
+		#romain4
+		if not spoken:
+			st.warning(AUDIO_RETRY)
+			return
+		parts.append(spoken)
 	question = "\n".join(parts)
-	uploads = user_input.files
+	uploads = list(files or [])
 	if len(uploads) > MAX_IMAGES:
 		st.warning(f"Seules les {MAX_IMAGES} premières images sont envoyées.")
 	images = [prepare_image(uploaded.getvalue()) for uploaded in uploads[:MAX_IMAGES]]
+
+	#romain4
+	if question and not images:
+		intent, spoken_topic = post_intent(
+			question,
+			pending=bool(st.session_state.get("offered_topic")),
+		)
+		if intent == "confirm" and st.session_state.get("offered_topic"):
+			_choose_topic(st.session_state.offered_topic)
+			_remember_turn(question, "Je rédige le post.")
+			st.session_state.clear_keyboard = True
+			st.rerun()
+		if intent == "draft" and spoken_topic:
+			st.session_state.offered_topic = spoken_topic
+			_choose_topic(spoken_topic)
+			_remember_turn(question, "Je rédige le post.")
+			st.session_state.clear_keyboard = True
+			st.rerun()
+		if intent == "offer" and spoken_topic:
+			st.session_state.offered_topic = spoken_topic
+			st.session_state.refresh_composer = True
 
 	if question or images:
 		if not question:
@@ -579,6 +722,9 @@ def _handle_turn(user_input):
 			assistant_message.update(voice_timings)
 		if speech:
 			assistant_message["speech"] = speech
+			#romain4
+			if st.session_state.get("refresh_composer"):
+				st.session_state.play_last_speech = True
 		st.session_state.messages.append(assistant_message)
 		#romain1
 		update_conversation_history("user", question, images or None)
@@ -588,8 +734,5 @@ def _handle_turn(user_input):
 		add_message(st.session_state.user_id, "assistant", response)
 
 
-if user_input:
-	try:
-		_handle_turn(user_input)
-	except AgentError as error:
-		st.error(str(error))
+#romain4
+_show_composer()

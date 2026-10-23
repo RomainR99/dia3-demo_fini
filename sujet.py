@@ -144,11 +144,12 @@ class Sujet:
 
     #romain2
     def propose_topics(self, persona, articles, trends=None):
-        """Propose 1 à 5 sujets du persona.
+        """Propose exactement 3 sujets du persona.
 
         `articles` sont des dictionnaires `title`, `source`, `link`, `kind`
         (`rss` ou `email`). Si `trends` est omis, appelle `fetch_trends`.
         Sans article et sans tendance, renvoie `[]` sans appeler Groq.
+        La page n'affiche que les trois premiers.
         """
         if persona not in PERSONAS:
             raise SujetError(
@@ -172,7 +173,8 @@ class Sujet:
             "Techno seulement pour la veille technologique. "
             "Économie et finance seulement pour la veille financière. "
             "Ignore une tendance qui n'est pas du thème.\n"
-            "Propose entre 3 et 5 sujets. "
+            #romain4
+            "Propose exactement 3 sujets.\n"
             "S'il y a moins de sources, propose moins, au moins 1.\n"
             "Réponds uniquement avec des lignes de cette forme, "
             "sans phrase avant ni après :\n"

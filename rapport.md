@@ -39,6 +39,10 @@
 
 - [17. Le mot de passe d'application](#mot-de-passe-application)
 
+**Micro sur téléphone**
+
+- [18. Simuler le bouton comme sur un téléphone](#simuler-telephone)
+
 <a id="branche-locale"></a>
 
 ## 1. La branche locale et le remote
@@ -270,3 +274,19 @@ Pour l'obtenir :
 Le détail est sur l'aide Google : [Se connecter avec des mots de passe d'application](https://support.google.com/mail/answer/185833?hl=fr).
 
 Si la page des mots de passe d'application n'existe pas, c'est en général un compte d'école ou d'entreprise, la Protection Avancée, ou une validation en deux étapes limitée aux clés de sécurité. Dans ce cas Google ne fournit pas ce code, et cette connexion IMAP ne peut pas aboutir.
+
+<a id="simuler-telephone"></a>
+
+## 18. Simuler le bouton comme sur un téléphone
+
+Aucune bibliothèque à importer. Le bouton utilise déjà les événements du doigt (`pointerdown` / `pointerup`), les mêmes qu'un téléphone.
+
+Pour le simuler sur le Mac :
+
+1. Ouvre http://localhost:8503 dans Chrome, connecte-toi.
+2. Ouvre les outils de développement (⌥⌘I).
+3. Active la barre d'appareil (l'icône téléphone, ou ⇧⌘M).
+4. Choisis un iPhone. Coche **Touch** s'il est proposé.
+5. Maintiens le bouton rouge avec la souris, parle, puis relâche. Le micro utilisé est celui du Mac, parce que la page est en `localhost`.
+
+Sur un vrai téléphone, ouvre l'URL « Network » affichée par Streamlit, sur le même Wi-Fi. Le bouton et la mise en page se voient. Le micro, lui, est refusé : le navigateur n'autorise l'enregistrement qu'en `https` ou en `localhost`, pas sur une adresse du type `http://192.168…`.

@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -17,6 +18,88 @@ from config import (
 load_dotenv()
 
 _FENCE = re.compile(r"^```[a-z]*\n?|```$", re.IGNORECASE)
+
+#romain4
+# Phrases entières, sans accent. « oui » et « vas-y » en font partie.
+_AGREEMENTS = {
+    "oui", "ouais", "ouai", "ok", "okay", "daccord", "dac",
+    "vas y", "allez", "allez y", "go", "banco", "parfait",
+    "cest bon", "c est bon", "ca marche", "top", "nickel",
+    "fais le", "fonce", "valide", "on y va", "bien sur",
+    "exactement", "tout a fait", "je confirme", "confirme",
+    "oui vas y", "absolument", "evidemment", "lets go",
+    "je suis partant", "partant", "carrement", "redige",
+    "redige le post", "cree le post", "creer le post",
+    "ecris le post", "lance", "lance le post",
+}
+#romain4
+# Ces débuts demandent d'écrire tout de suite, si la suite donne le sujet.
+_WRITE_NOW = (
+    "redige",
+    "ecris le post",
+    "ecris un post",
+    "cree le post",
+    "creer le post",
+    "fais le post",
+    "fais un post",
+    "lance le post",
+    "je veux un post",
+    "je veux le post",
+    "fais moi un post",
+)
+#romain4
+_GREETINGS = {
+    "bonjour", "salut", "hello", "merci", "au revoir",
+    "bonne journee", "coucou", "bonsoir", "ciao",
+}
+#romain4
+_EMPTY_WRITE = {"", "le", "le post", "un post", "moi le post", "moi un post"}
+
+
+#romain4
+def _fold(text):
+    """Minuscules, sans accent, apostrophe ni trait d'union."""
+    normalized = unicodedata.normalize("NFD", (text or "").lower())
+    folded = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    folded = folded.replace("'", " ").replace("’", " ").replace("-", " ")
+    return " ".join(folded.split())
+
+
+#romain4
+def _asks_to_write(folded):
+    """Vrai si la phrase demande un post et donne déjà le sujet."""
+    for cue in _WRITE_NOW:
+        if folded == cue or folded.startswith(cue + " "):
+            extra = folded[len(cue):].strip()
+            return extra not in _EMPTY_WRITE
+    return False
+
+
+#romain4
+def _is_agreement(folded):
+    """Vrai si toute la phrase est un accord, pas un nouveau sujet."""
+    if folded in _AGREEMENTS:
+        return True
+    words = folded.split()
+    if not words or len(words) > 4:
+        return False
+    if words[0] in {"oui", "ouais", "ok", "okay"}:
+        return True
+    if folded.startswith("vas y") or folded.startswith("allez"):
+        return True
+    return False
+
+
+#romain4
+def _topic_from(text):
+    """Sujet tiré de la phrase dite ou tapée."""
+    return {
+        "title": text.strip(),
+        "source": "conversation",
+        "reason": "Sujet donné dans la conversation.",
+    }
 
 
 #romain3
@@ -164,6 +247,61 @@ class Post:
         self.draft = ""
         self.validated = ""
 
+    #romain4
+    def post_intent(self, text, pending=False):
+        """Classe une phrase avant de rédiger.
+
+        `("confirm", None)` : accord pour le sujet déjà donné
+        (oui, vas-y, ou une autre indication courte).
+        `("draft", sujet)` : la phrase demande d'écrire maintenant
+        et contient le sujet.
+        `("offer", sujet)` : la phrase donne un sujet, le bouton
+        « Créer le post » peut apparaître.
+        `("chat", None)` : le reste de la conversation.
+
+        Une indication courte qui n'est pas dans la liste est demandée
+        au modèle, qui répond oui ou non. S'il ne répond pas, la phrase
+        reste une conversation.
+        """
+        folded = _fold(text)
+        if not folded or folded in _GREETINGS or folded.startswith("merci"):
+            return "chat", None
+        if _asks_to_write(folded):
+            return "draft", _topic_from(text)
+        if _is_agreement(folded):
+            return "confirm", None
+        words = folded.split()
+        if pending and 0 < len(words) <= 8:
+            if self._says_yes(text):
+                return "confirm", None
+        if len(words) >= 2:
+            return "offer", _topic_from(text)
+        return "chat", None
+
+    #romain4
+    def _says_yes(self, text):
+        """Demande au modèle si la phrase lance la rédaction.
+
+        Répond False si Groq ne renvoie rien d'utilisable.
+        """
+        prompt = (
+            "Un sujet de post est déjà proposé.\n"
+            f"L'utilisateur dit : « {text.strip()} ».\n"
+            "Est-ce qu'il demande de rédiger ce post maintenant "
+            "(accord, ordre ou encouragement) ?\n"
+            "Réponds uniquement par oui ou par non."
+        )
+        try:
+            completion = self._client().chat.completions.create(
+                model=TEXT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+            )
+            raw = completion.choices[0].message.content or ""
+        except Exception:
+            return False
+        return _fold(raw).startswith("oui")
+
 
 #romain3
 post = Post()
@@ -223,3 +361,9 @@ def save_post_edit(text):
 def clear_post():
     """Même rôle que `Post.clear_post`."""
     post.clear_post()
+
+
+#romain4
+def post_intent(text, pending=False):
+    """Même rôle que `Post.post_intent`."""
+    return post.post_intent(text, pending=pending)

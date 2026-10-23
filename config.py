@@ -78,6 +78,14 @@ TRENDS_TIMEOUT = 8
 MAX_TRENDS = 10
 MAX_TOPICS = 5
 
+#romain4
+# Le bouton Inspirer affiche trois sujets, pas la liste entière.
+INSPIRE_COUNT = 3
+# Un appui trop court ou sans voix ne part pas à l'agent.
+AUDIO_MIN_SECONDS = 0.45
+AUDIO_MIN_PEAK = 0.02
+AUDIO_RETRY = "Refaites l'audio"
+
 #romain3
 # 150 mots par minute à l'oral. 280 à 480 mots font environ 2 à 3 minutes.
 POST_WORDS_PER_MINUTE = 150
