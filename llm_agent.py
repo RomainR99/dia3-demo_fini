@@ -517,26 +517,31 @@ def _remember_tts(backend):
 
 
 def _say_french(piece):
-    if shutil.which("say") is None:
+    # Ce macOS n'accepte plus --file-format et refuse d'écrire un WAV.
+    # Il écrit un AIFF. afconvert le passe en WAV 16 bits, 22050 Hz.
+    if shutil.which("say") is None or shutil.which("afconvert") is None:
         raise AgentError(
             "La lecture vocale est indisponible sur cette machine. "
             "La réponse reste affichée en texte."
         )
-    descriptor, path = tempfile.mkstemp(suffix=".wav")
-    os.close(descriptor)
+    folder = tempfile.mkdtemp(prefix="say-")
+    source = os.path.join(folder, "texte.txt")
+    aiff = os.path.join(folder, "voix.aiff")
+    wav = os.path.join(folder, "voix.wav")
     try:
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(piece)
+        #romain7
         subprocess.run(
-            [
-                "say",
-                "-v", FRENCH_VOICE,
-                "-o", path,
-                "--file-format=WAVE",
-                "--data-format=LEI16@22050",
-                piece,
-            ],
+            ["say", "-v", FRENCH_VOICE, "-o", aiff, "-f", source],
             check=True,
         )
-        with open(path, "rb") as audio_file:
+        #romain7
+        subprocess.run(
+            ["afconvert", "-f", "WAVE", "-d", "LEI16@22050", aiff, wav],
+            check=True,
+        )
+        with open(wav, "rb") as audio_file:
             return audio_file.read()
     except (OSError, subprocess.CalledProcessError) as error:
         raise AgentError(
@@ -544,7 +549,7 @@ def _say_french(piece):
             "La réponse reste affichée en texte."
         ) from error
     finally:
-        os.remove(path)
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _concat_wavs(chunks):

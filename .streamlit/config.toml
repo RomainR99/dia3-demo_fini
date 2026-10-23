@@ -1,0 +1,4 @@
+#romain7
+# Les mp4 et les sous-titres ne doivent pas relancer la page en cours de montage.
+[server]
+folderWatchBlacklist = ["data"]

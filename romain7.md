@@ -6,7 +6,7 @@
 
 Ce guide part de zéro pour ce lot. Chaque changement porte le commentaire `#romain7`. Les docstrings disent le rôle de chaque fonction. `video.py` s'écrit avec 4 espaces. `app.py` garde ses tabulations.
 
-La voix n'est pas réécrite. `build_video` appelle `speak`, déjà dans `llm_agent.py` : Orpheus d'abord, puis la voix française Thomas du Mac si Groq refuse.
+La voix n'est pas réécrite. `build_video` appelle `speak`, déjà dans `llm_agent.py` : Orpheus d'abord, puis la voix française Thomas du Mac si Groq refuse. Sur ce macOS, `say` n'écrit plus de WAV : il écrit un AIFF, et `afconvert` le transforme en WAV 16 bits.
 
 ## Ce que l'utilisateur voit
 
@@ -116,7 +116,12 @@ L'appel reprend l'en-tête `User-Agent: Barbe-Quasar/1.0` et les certificats `ce
 4. Le sous-titre est dessiné en bas de l'image.
 5. Le post est découpé en autant de morceaux que d'images. `speak` lit chaque morceau. ffmpeg ramène chaque morceau à 10 secondes (`atempo` entre 0,5 et 2, enchaîné si besoin, puis `apad`).
 6. Les images durent 10 secondes chacune. La piste audio est collée dans le même ordre.
-7. Le mp4 est `data/videos/{user_id}.mp4`. Le dossier de travail est effacé.
+Le dossier de travail est un dossier temporaire du système, pas `data/videos`. Streamlit surveille le projet : chaque image écrite dedans relançait la page et coupait ffmpeg. Seul le mp4 final est copié dans `data/videos`. `.streamlit/config.toml` ignore aussi le dossier `data` :
+
+```toml
+[server]
+folderWatchBlacklist = ["data"]
+```
 
 ffmpeg, pour les images :
 
@@ -199,3 +204,5 @@ Le filtre `subtitles` de ffmpeg manque dans la formule Homebrew. Pillow dessine 
 La voix lit le post. Les sous-titres peuvent être la traduction choisie dans les réglages. Les deux sont calés sur les mêmes 10 secondes, mais les phrases ne sont pas une traduction mot à mot de ce qui se dit si la langue des sous-titres n'est pas celle du post.
 
 Le mp4 ne va pas dans git. `data/videos/` est ignoré, comme `data/subtitles/`.
+
+Écrire les images de travail dans le projet fait relancer Streamlit. ffmpeg s'arrête alors, et la page dit seulement que le montage a échoué. Le travail reste dans un dossier temporaire.

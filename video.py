@@ -5,6 +5,7 @@ import re
 import shutil
 import ssl
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -420,10 +421,9 @@ def build_video(user_id, text):
     if not view.get("gamma_url"):
         raise VideoError("Envoie d'abord le texte à Gamma.")
     ffmpeg = _ffmpeg()
-    work = os.path.join("data", "videos", f"work-{user_id}")
-    if os.path.isdir(work):
-        shutil.rmtree(work)
-    os.makedirs(work, exist_ok=True)
+    # Hors du projet : Streamlit relance la page à chaque fichier créé dedans,
+    # et cette relance coupait ffmpeg.
+    work = tempfile.mkdtemp(prefix=f"barbe-video-{user_id}-")
     out = os.path.join("data", "videos", f"{user_id}.mp4")
     try:
         images = export_slides(key, view["gamma_url"], os.path.join(work, "slides"))
@@ -445,7 +445,9 @@ def build_video(user_id, text):
         _concat_wavs(ffmpeg, wavs, os.path.join(work, "voice.wav"))
         _assemble(ffmpeg, painted, "voice.wav", work, len(images) * SLIDE_SECONDS)
         os.makedirs(os.path.dirname(out), exist_ok=True)
-        os.replace(os.path.join(work, "video.mp4"), out)
+        staged = out + ".next.mp4"
+        shutil.copyfile(os.path.join(work, "video.mp4"), staged)
+        os.replace(staged, out)
         save_video_path(user_id, out)
     finally:
         shutil.rmtree(work, ignore_errors=True)
