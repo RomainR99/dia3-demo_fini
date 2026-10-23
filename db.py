@@ -6,7 +6,12 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from config import DB_PATH, PERSONA_FEEDS
+from config import (
+    DB_PATH,
+    DEFAULT_SLIDE_LANGUAGE,
+    DEFAULT_SUBTITLE_LANGUAGE,
+    PERSONA_FEEDS,
+)
 
 
 # Base de données
@@ -103,6 +108,22 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 );
 """
 
+#romain6
+GAMMA_SCHEMA = """
+CREATE TABLE IF NOT EXISTS gamma_accounts (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    api_key TEXT NOT NULL DEFAULT '',
+    slide_language TEXT NOT NULL DEFAULT 'fr',
+    subtitle_language TEXT NOT NULL DEFAULT 'fr',
+    connected_at TEXT,
+    generation_id TEXT,
+    gamma_url TEXT,
+    slide_count INTEGER,
+    job_status TEXT,
+    subtitle_path TEXT
+);
+"""
+
 
 # Base de données
 def init_db():
@@ -110,6 +131,8 @@ def init_db():
         conn.executescript(SCHEMA)
         #flux_rss_email
         conn.executescript(MAILBOX_SCHEMA)
+        #romain6
+        conn.executescript(GAMMA_SCHEMA)
 
 
 # Base de données
@@ -418,3 +441,120 @@ def disconnect_mailbox(user_id):
             conn.execute("DELETE FROM articles WHERE feed_id = ?", (feed["id"],))
             conn.execute("DELETE FROM feeds WHERE id = ?", (feed["id"],))
         conn.execute("DELETE FROM mailboxes WHERE user_id = ?", (user_id,))
+
+
+#romain6
+def gamma_view(user_id):
+    """Langues, état et lien Gamma, sans la clé API.
+
+    `connected` est vrai seulement si une clé est enregistrée.
+    Sans ligne, les langues reviennent au français.
+    """
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT api_key, slide_language, subtitle_language, connected_at,
+                   generation_id, gamma_url, slide_count, job_status, subtitle_path
+            FROM gamma_accounts WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return {
+            "connected": False,
+            "slide_language": DEFAULT_SLIDE_LANGUAGE,
+            "subtitle_language": DEFAULT_SUBTITLE_LANGUAGE,
+            "generation_id": "",
+            "gamma_url": "",
+            "slide_count": 0,
+            "job_status": "",
+            "subtitle_path": "",
+        }
+    return {
+        "connected": bool((row["api_key"] or "").strip()),
+        "slide_language": row["slide_language"],
+        "subtitle_language": row["subtitle_language"],
+        "generation_id": row["generation_id"] or "",
+        "gamma_url": row["gamma_url"] or "",
+        "slide_count": row["slide_count"] or 0,
+        "job_status": row["job_status"] or "",
+        "subtitle_path": row["subtitle_path"] or "",
+    }
+
+
+#romain6
+def gamma_api_key(user_id):
+    """Clé du compte, lue seulement pour appeler Gamma."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT api_key FROM gamma_accounts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return ""
+    return (row["api_key"] or "").strip()
+
+
+#romain6
+def save_gamma_key(user_id, api_key):
+    """Enregistre la clé personnelle. Les langues déjà choisies restent."""
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO gamma_accounts (user_id, api_key, connected_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                api_key = excluded.api_key,
+                connected_at = excluded.connected_at
+            """,
+            (user_id, api_key.strip(), now()),
+        )
+
+
+#romain6
+def save_gamma_languages(user_id, slide_language, subtitle_language):
+    """Garde la langue des slides (et de la vidéo) et celle des sous-titres."""
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO gamma_accounts (
+                user_id, api_key, slide_language, subtitle_language
+            )
+            VALUES (?, '', ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                slide_language = excluded.slide_language,
+                subtitle_language = excluded.subtitle_language
+            """,
+            (user_id, slide_language, subtitle_language),
+        )
+
+
+#romain6
+def save_gamma_job(user_id, generation_id, status, gamma_url, slide_count, subtitle_path):
+    """Mémorise la génération en cours ou le lien des slides."""
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE gamma_accounts
+            SET generation_id = ?, job_status = ?, gamma_url = ?,
+                slide_count = ?, subtitle_path = ?
+            WHERE user_id = ?
+            """,
+            (generation_id, status, gamma_url, slide_count, subtitle_path, user_id),
+        )
+
+
+#romain6
+def disconnect_gamma(user_id):
+    """Oublie la clé et le dernier lien. Les langues choisies restent."""
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE gamma_accounts
+            SET api_key = '', connected_at = NULL,
+                generation_id = NULL, gamma_url = NULL,
+                slide_count = NULL, job_status = NULL
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )

@@ -43,6 +43,10 @@
 
 - [18. Simuler le bouton comme sur un téléphone](#simuler-telephone)
 
+**Streamlit**
+
+- [19. Pourquoi relancer le serveur après un changement](#relancer-streamlit)
+
 <a id="branche-locale"></a>
 
 ## 1. La branche locale et le remote
@@ -290,3 +294,45 @@ Pour le simuler sur le Mac :
 5. Maintiens le bouton rouge avec la souris, parle, puis relâche. Le micro utilisé est celui du Mac, parce que la page est en `localhost`.
 
 Sur un vrai téléphone, ouvre l'URL « Network » affichée par Streamlit, sur le même Wi-Fi. Le bouton et la mise en page se voient. Le micro, lui, est refusé : le navigateur n'autorise l'enregistrement qu'en `https` ou en `localhost`, pas sur une adresse du type `http://192.168…`.
+
+<a id="relancer-streamlit"></a>
+
+## 19. Pourquoi relancer le serveur après un changement
+
+Streamlit sait relire un fichier enregistré. Couper le terminal à chaque sauvegarde veut dire qu'une des trois situations suivantes bloque ce rafraîchissement.
+
+### Always Rerun n'est pas activé
+
+La première fois que le fichier principal change, Streamlit propose en haut à droite **Rerun** ou **Always Rerun**.
+
+**Always Rerun** relance la page tout seul à chaque enregistrement (⌘S). Sans ce choix, la page attend un clic sur **Rerun**.
+
+### Le processus s'est arrêté
+
+Une erreur de syntaxe s'affiche dans la page. Le serveur, lui, reste lancé : il peut encore voir l'enregistrement suivant.
+
+Si le terminal affiche le prompt et plus l'adresse locale, le processus est arrêté. Plus rien n'écoute les fichiers. Corrige l'erreur, puis relance `env/bin/python -m streamlit run app.py`. Le linter de l'éditeur signale la syntaxe avant l'enregistrement.
+
+### Un fichier importé a changé
+
+`streamlit run app.py` surveille d'abord `app.py`. La logique est dans d'autres fichiers : `gamma_client.py`, `config.py`, `post.py`, `llm_agent.py`. Python garde en mémoire le module déjà importé. Un nom nouveau, comme `post_intent` ou `GAMMA_LANGUAGES`, produit alors `ImportError` alors que le fichier sur le disque est à jour.
+
+`--server.runOnSave true` relance le script quand un fichier surveillé est enregistré. Sur ce Mac, le terminal demande aussi d'installer `watchdog`. Sans ce paquet, un fichier secondaire passe souvent inaperçu, et l'ancienne version reste en mémoire. Dans ce cas, couper le processus et le relancer est le moyen de recharger le module.
+
+```bash
+env/bin/python -m pip install watchdog
+env/bin/python -m streamlit run app.py --server.runOnSave true
+```
+
+Le même réglage peut vivre dans `.streamlit/config.toml`, à la racine du projet :
+
+```toml
+[server]
+runOnSave = true
+```
+
+| Situation | Comportement | Action |
+| --- | --- | --- |
+| Fichier principal `app.py` | La page peut se relancer à l'enregistrement | **Always Rerun** dans le navigateur |
+| Fichier importé (`post.py`, `config.py`, `gamma_client.py`) | L'ancienne version peut rester en mémoire | `watchdog`, puis `--server.runOnSave true`. Sinon, relancer le processus |
+| Le terminal n'affiche plus l'adresse locale | Le processus est arrêté | Corriger l'erreur, puis relancer |

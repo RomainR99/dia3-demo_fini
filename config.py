@@ -86,6 +86,37 @@ AUDIO_MIN_SECONDS = 0.45
 AUDIO_MIN_PEAK = 0.02
 AUDIO_RETRY = "Refaites l'audio"
 
+#romain6
+# Une slide toutes les 10 secondes. 2 min 30 font 15 slides, pas plus.
+GAMMA_API_BASE = "https://public-api.gamma.app/v1.0"
+SLIDE_SECONDS = 10
+VIDEO_MAX_SECONDS = 150
+GAMMA_TIMEOUT = 60
+GAMMA_POLL_SECONDS = 5
+GAMMA_POLL_TRIES = 6
+DEFAULT_SLIDE_LANGUAGE = "fr"
+DEFAULT_SUBTITLE_LANGUAGE = "fr"
+# Codes acceptés par textOptions.language. La vidéo parle cette langue.
+GAMMA_LANGUAGES = {
+    "fr": "Français",
+    "en": "Anglais",
+    "en-gb": "Anglais (Royaume-Uni)",
+    "es": "Espagnol",
+    "de": "Allemand",
+    "it": "Italien",
+    "pt-br": "Portugais (Brésil)",
+    "nl": "Néerlandais",
+    "pl": "Polonais",
+    "ar": "Arabe",
+    "zh-cn": "Chinois simplifié",
+    "ja": "Japonais",
+    "ko": "Coréen",
+    "ru": "Russe",
+    "tr": "Turc",
+    "hi": "Hindi",
+    "vi": "Vietnamien",
+}
+
 #romain3
 # 150 mots par minute à l'oral. 280 à 480 mots font environ 2 à 3 minutes.
 POST_WORDS_PER_MINUTE = 150

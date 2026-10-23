@@ -155,6 +155,7 @@ activemq-data/
 # Base de données
 data/*.db
 data/*.db-*
+data/subtitles/
 .venv
 env/
 venv/

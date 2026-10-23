@@ -19,6 +19,8 @@ from config import (
 	AUDIO_MIN_SECONDS,
 	AUDIO_RETRY,
 	INSPIRE_COUNT,
+	#romain6
+	GAMMA_LANGUAGES,
 )
 # Base de données
 from db import (
@@ -32,6 +34,10 @@ from db import (
 	load_messages,
 	recent_articles,
 	set_feed_active,
+	#romain6
+	disconnect_gamma,
+	gamma_view,
+	save_gamma_languages,
 )
 from llm_agent import (
 	AgentError,
@@ -64,6 +70,8 @@ from hold_talk import hold_to_talk
 from rss_watcher import digest_for, refresh_user
 #flux_rss_email
 from mail_watcher import MailError, connect_mailbox, matches_theme
+#romain6
+from gamma_client import GammaError, connect_account, refresh_generation, send_approved
 
 # Départ du chrono : le script repart quand l'enregistrement vient d'être envoyé.
 run_started = time.perf_counter()
@@ -162,6 +170,10 @@ def show_veille():
 		#romain5
 		st.session_state.offered_topic = None
 		st.session_state.video_source = ""
+		#romain6
+		st.session_state.pop("gamma_api_key", None)
+		st.session_state.pop("gamma_slide_language", None)
+		st.session_state.pop("gamma_subtitle_language", None)
 		st.rerun()
 
 	st.sidebar.subheader("Flux")
@@ -188,6 +200,8 @@ def show_veille():
 
 	#flux_rss_email
 	_show_gmail(user_id)
+	#romain6
+	_show_gamma(user_id)
 
 
 #flux_rss_email
@@ -226,6 +240,61 @@ def _show_gmail(user_id):
 			st.sidebar.markdown(f"[{title}]({link})")
 		else:
 			st.sidebar.write(title)
+
+
+#romain6
+def _show_gamma(user_id):
+	"""Réglages Gamma : clé du compte, langue des slides, langue des sous-titres.
+
+	La langue des slides est aussi celle de la vidéo. Les sous-titres ont
+	leur propre langue, français par défaut. La clé n'est pas réaffichée.
+	"""
+	st.sidebar.subheader("Réglages")
+	view = gamma_view(user_id)
+	if "gamma_slide_language" not in st.session_state:
+		st.session_state.gamma_slide_language = view["slide_language"]
+	if "gamma_subtitle_language" not in st.session_state:
+		st.session_state.gamma_subtitle_language = view["subtitle_language"]
+	codes = list(GAMMA_LANGUAGES)
+	slide = st.sidebar.selectbox(
+		"Langue des slides et de la vidéo",
+		codes,
+		format_func=lambda code: GAMMA_LANGUAGES[code],
+		key="gamma_slide_language",
+	)
+	subtitles = st.sidebar.selectbox(
+		"Langue des sous-titres",
+		codes,
+		format_func=lambda code: GAMMA_LANGUAGES[code],
+		key="gamma_subtitle_language",
+	)
+	if slide != view["slide_language"] or subtitles != view["subtitle_language"]:
+		save_gamma_languages(user_id, slide, subtitles)
+	if view["connected"]:
+		st.sidebar.caption("Gamma connecté.")
+	st.sidebar.text_input(
+		"Clé API Gamma",
+		type="password",
+		key="gamma_api_key",
+	)
+	if st.sidebar.button("Connecter Gamma"):
+		try:
+			connect_account(user_id, st.session_state.get("gamma_api_key") or "")
+		except GammaError as error:
+			st.sidebar.warning(str(error))
+		else:
+			st.sidebar.success("Gamma connecté.")
+			st.rerun()
+	if view["connected"] and st.sidebar.button("Déconnecter Gamma"):
+		disconnect_gamma(user_id)
+		st.rerun()
+	if view.get("job_status") == "pending" and st.sidebar.button("Vérifier les slides"):
+		try:
+			refresh_generation(user_id)
+		except GammaError as error:
+			st.sidebar.warning(str(error))
+		else:
+			st.rerun()
 
 
 #romain5
@@ -329,7 +398,8 @@ def _show_post(user_id):
 
 	Le brouillon est régénéré quand le sujet change. La zone de texte garde
 	les modifications. « Créer le post » enregistre ce texte comme source
-	du futur flux vidéo, sans lancer de montage ni de visuel.
+	du futur flux vidéo. « Envoyer à Gamma » crée les slides de ce texte
+	et le fichier de sous-titres, sans monter la vidéo.
 	"""
 	topic = st.session_state.get("chosen_topic")
 	if not topic:
@@ -379,6 +449,28 @@ def _show_post(user_id):
 			"Texte enregistré. Il partira vers la vidéo et les visuels. "
 			"Cette étape n'est pas encore branchée."
 		)
+		#romain6
+		if st.button("Envoyer à Gamma", key="send_gamma"):
+			try:
+				with st.spinner("Gamma prépare les slides…"):
+					send_approved(
+						st.session_state.user_id,
+						st.session_state.video_source,
+					)
+			except GammaError as error:
+				st.warning(str(error))
+			else:
+				st.rerun()
+		sent = gamma_view(st.session_state.user_id)
+		if sent.get("gamma_url"):
+			st.markdown(f"[Ouvrir les slides Gamma]({sent['gamma_url']})")
+			st.caption(
+				f"{sent['slide_count']} slides, une toutes les 10 secondes. "
+				"La vidéo parlera la langue des slides. "
+				f"Sous-titres : {GAMMA_LANGUAGES.get(sent['subtitle_language'], 'Français')}."
+			)
+		elif sent.get("job_status") == "pending":
+			st.info("Gamma prépare encore les slides. Vérifie-les dans les réglages.")
 	elif st.session_state.get("validated_post"):
 		st.success("Version validée enregistrée. C'est elle qui partira en vidéo.")
 
