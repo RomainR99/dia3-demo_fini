@@ -16,6 +16,8 @@
 - [5. Passer l'historique à `ask_llm`](#historique-ask-llm)
 - [7. Ajouter un tour avec `append`](#session-state-append)
 - [11. `*history` en détail](#history-detail)
+- [14. Pourquoi `history=None`](#history-none)
+- [15. Si l'historique dépasse la fenêtre de contexte](#fenetre-contexte)
 
 **La classe et l'interface**
 
@@ -28,6 +30,14 @@
 - [10. Pourquoi `import os`](#import-os)
 - [12. À quoi sert `print("\n")`](#print-newline)
 - [13. Le `"r"` de `open`](#open-mode-r)
+
+**Réponse vocale**
+
+- [16. La ligne STT · LLM · TTS · début de l'audio](#latence-vocale)
+
+**Boîte Gmail**
+
+- [17. Le mot de passe d'application](#mot-de-passe-application)
 
 <a id="branche-locale"></a>
 
@@ -209,3 +219,54 @@ Sans l'étoile, Python mettrait la liste entière comme un seul élément. L'API
 `with` ferme le fichier tout seul à la fin du bloc, même en cas d'erreur. `as file` donne le nom `file` à ce fichier ouvert, et `file.read()` en renvoie tout le contenu sous forme d'une chaîne.
 
 Les autres modes courants : `"w"` écrit en remplaçant ce qui était déjà dans le fichier, `"a"` ajoute à la fin. `"r"` est aussi le mode par défaut d'`open` quand on n'en donne pas.
+
+<a id="history-none"></a>
+
+## 14. Pourquoi `history=None`
+
+`history=None` rend l'argument facultatif. On peut appeler `ask_llm(question)` sans liste, comme dans le bloc `if __name__` ou au premier message. Avec seulement `history`, chaque appel devrait en fournir une, même vide.
+
+La valeur par défaut est `None` et pas `[]`, parce qu'une liste écrite dans la signature est créée une seule fois et partagée entre tous les appels. `None` veut dire « rien n'a été passé ». Le `if` crée alors une liste vide neuve, uniquement pour cet appel.
+
+<a id="fenetre-contexte"></a>
+
+## 15. Si l'historique dépasse la fenêtre de contexte
+
+Si le total dépasse la fenêtre du modèle, Groq refuse l'appel. La réponse n'arrive pas. Le message `system` n'est pas dans `history` : il est relu dans `context.txt` à chaque fois, donc il n'est pas le premier élément que l'on pourrait couper.
+
+<a id="latence-vocale"></a>
+
+## 16. La ligne STT · LLM · TTS · début de l'audio
+
+Sous une réponse vocale, la page affiche quatre durées. Deux relevés de la session :
+
+`STT 0,2 s · LLM 0,5 s · TTS 0,0 s · début de l'audio 1,2 s`
+
+`STT — · LLM 0,8 s · TTS 0,1 s · début de l'audio 1,3 s`
+
+Le nombre à comparer aux 5 secondes est le dernier : le temps jusqu'au début du son.
+
+**STT** est la transcription. Dans le premier relevé, Whisper a mis 0,2 s : le message a été dicté. Le tiret du second relevé veut dire qu'il n'y a pas eu d'audio. Le message a été tapé, et l'interrupteur « Réponse vocale » a fait lire la réponse.
+
+**LLM** s'arrête à la première phrase complète. 0,5 s et 0,8 s ne couvrent pas toute la génération. C'est le moment où la synthèse de cette phrase peut commencer. La suite du texte continue de s'écrire après.
+
+**TTS** est la synthèse de cette première phrase seulement. 0,1 s, c'est la voix française du Mac, produite sur la machine. 0,0 s est le même cas, affiché avec une seule décimale : en dessous de 0,05 s, le chiffre affiché est 0,0.
+
+**début de l'audio** part plus tôt que les trois autres, au moment où la page se relance parce que le message est arrivé. Dans le premier relevé, 0,2 + 0,5 + 0,0 font 0,7 s. Le passage à 1,2 s, c'est le temps de relancer la page avant la transcription. Dans le second, 0,8 + 0,1 font 0,9 s, et 1,3 s inclut le même temps de relance. Le tiret de STT n'entre pas dans cette addition.
+
+<a id="mot-de-passe-application"></a>
+
+## 17. Le mot de passe d'application
+
+Dans le champ « Mot de passe d'application », colle le code de 16 lettres que Google génère, pas le mot de passe avec lequel tu ouvres Gmail. Il ressemble à `abcd efgh ijkl mnop`. Les espaces peuvent rester.
+
+Pour l'obtenir :
+
+1. Active la validation en deux étapes sur le compte Google. Sans elle, Google ne propose pas ce code.
+2. Ouvre [Mots de passe des applications](https://myaccount.google.com/apppasswords).
+3. Crée-en un, nomme-le par exemple `Barbe-Quasar`, puis copie les 16 lettres. Google ne les réaffiche pas.
+4. Dans la barre de l'application, mets ton adresse Gmail et ce code, puis clique sur **Connecter Gmail**.
+
+Le détail est sur l'aide Google : [Se connecter avec des mots de passe d'application](https://support.google.com/mail/answer/185833?hl=fr).
+
+Si la page des mots de passe d'application n'existe pas, c'est en général un compte d'école ou d'entreprise, la Protection Avancée, ou une validation en deux étapes limitée aux clés de sécurité. Dans ce cas Google ne fournit pas ce code, et cette connexion IMAP ne peut pas aboutir.
