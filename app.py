@@ -159,8 +159,9 @@ def show_veille():
 		st.session_state.post_text = ""
 		st.session_state.validated_post = ""
 		clear_post()
-		#romain4
+		#romain5
 		st.session_state.offered_topic = None
+		st.session_state.video_source = ""
 		st.rerun()
 
 	st.sidebar.subheader("Flux")
@@ -227,17 +228,32 @@ def _show_gmail(user_id):
 			st.sidebar.write(title)
 
 
-#romain4
+#romain5
 def _choose_topic(topic):
 	"""Retient le sujet et force une nouvelle rédaction.
 
 	`post_for` vide fait rappeler `draft_post` dans `_show_post`.
+	L'ancienne source vidéo est oubliée : elle ne correspond plus à ce sujet.
 	"""
 	st.session_state.chosen_topic = topic
 	st.session_state.post_for = None
+	st.session_state.video_source = ""
 
 
-#romain4
+#romain5
+def _start_video_flow(text):
+	"""Garde le texte modifié comme source du futur flux vidéo.
+
+	Le texte édité est enregistré. Aucune vidéo ni aucun visuel n'est produit :
+	ce bouton est seulement l'entrée de cette étape, à brancher plus tard.
+	"""
+	saved = save_post_edit(text)
+	st.session_state.validated_post = saved
+	st.session_state.video_source = saved
+	return saved
+
+
+#romain5
 def _remember_turn(question, reply):
 	"""Garde l'accord de l'utilisateur sans appeler l'agent.
 
@@ -251,13 +267,13 @@ def _remember_turn(question, reply):
 	add_message(st.session_state.user_id, "assistant", reply)
 
 
-#romain4
+#romain5
 def _show_topics(user_id):
-	"""Affiche Inspirer, puis trois titres, sous le micro.
+	"""Affiche Inspirer, puis trois titres, puis le post, sous le micro.
 
 	Un clic sur Inspirer interroge la veille. Un clic sur un des trois
-	titres rédige le post tout de suite. Si un sujet a été donné dans
-	la conversation, le bouton « Créer le post » fait la même chose.
+	titres choisit ce sujet. `_show_post` rédige juste en dessous, dans
+	le même passage, un texte que l'utilisateur peut modifier.
 	"""
 	if st.button("Inspirer", key="inspire"):
 		persona = st.session_state.persona
@@ -281,15 +297,11 @@ def _show_topics(user_id):
 			if not st.session_state.topics:
 				st.info("Aucun sujet pour l'instant. Rafraîchis la veille.")
 	for index, topic in enumerate(st.session_state.get("topics") or []):
-		#romain4
+		#romain5
 		if st.button(topic["title"], key=f"inspire-{index}"):
 			_choose_topic(topic)
-	offered = st.session_state.get("offered_topic")
-	#romain4
-	if offered and st.session_state.get("post_for") != offered.get("title"):
-		st.caption(offered.get("title") or "")
-		if st.button("Créer le post", key="create_post"):
-			_choose_topic(offered)
+	#romain5
+	_show_post(user_id)
 
 
 #romain3
@@ -315,8 +327,9 @@ def _post_articles(user_id):
 def _show_post(user_id):
 	"""Affiche le brouillon du sujet choisi et enregistre la version validée.
 
-	Le brouillon est régénéré quand le sujet change. Le texte modifié dans
-	la zone reste celui que `save_post_edit` garde pour la vidéo.
+	Le brouillon est régénéré quand le sujet change. La zone de texte garde
+	les modifications. « Créer le post » enregistre ce texte comme source
+	du futur flux vidéo, sans lancer de montage ni de visuel.
 	"""
 	topic = st.session_state.get("chosen_topic")
 	if not topic:
@@ -355,7 +368,18 @@ def _show_post(user_id):
 			st.warning(str(error))
 		else:
 			st.session_state.validated_post = saved
-	if st.session_state.get("validated_post"):
+	#romain5
+	if st.button("Créer le post", key="create_post"):
+		try:
+			_start_video_flow(st.session_state.post_text)
+		except PostError as error:
+			st.warning(str(error))
+	if st.session_state.get("video_source"):
+		st.success(
+			"Texte enregistré. Il partira vers la vidéo et les visuels. "
+			"Cette étape n'est pas encore branchée."
+		)
+	elif st.session_state.get("validated_post"):
 		st.success("Version validée enregistrée. C'est elle qui partira en vidéo.")
 
 
@@ -408,7 +432,7 @@ def show_message(message, autoplay=False):
 			message["total_s"],
 		))
 	if message.get("speech"):
-		#romain4
+		#romain5
 		st.audio(message["speech"], format="audio/wav", autoplay=autoplay)
 
 
@@ -420,7 +444,7 @@ def play_chained(wav, speech_chunks, ready_at):
 	if ready_at and now < ready_at:
 		time.sleep(ready_at - now)
 	speech_chunks.append(wav)
-	#romain4
+	#romain5
 	# Le rafraîchissement qui affiche « Créer le post » rejoue la voix une fois.
 	st.audio(
 		wav,
@@ -516,11 +540,8 @@ require_user()
 #flux RSS
 show_veille()
 
-#romain3
-_show_post(st.session_state.user_id)
-
 #persona
-#romain4
+#romain5
 play_last = st.session_state.pop("play_last_speech", False)
 history = st.session_state.messages
 last = len(history) - 1
@@ -538,7 +559,7 @@ def _show_composer():
 	Le clavier ouvre une zone de texte. Le micro enregistre tant que le bouton
 	est enfoncé et envoie l'audio au relâchement. Un appui trop court ou sans
 	voix affiche `AUDIO_RETRY` et n'appelle pas l'agent. Sous le micro :
-	Inspirer, les trois titres, et « Créer le post » si un sujet a été donné.
+	Inspirer, jusqu'à trois titres, puis le post modifiable.
 	"""
 	if st.session_state.pop("clear_keyboard", False):
 		st.session_state.keyboard_text = ""
@@ -552,7 +573,7 @@ def _show_composer():
 			AUDIO_MIN_PEAK,
 			key="hold_mic",
 		)
-		#romain4
+		#romain5
 		_show_topics(st.session_state.user_id)
 	if st.session_state.get("show_keyboard"):
 		st.text_area(CHAT_PLACEHOLDER, key="keyboard_text")
@@ -591,7 +612,7 @@ def _show_composer():
 	except AgentError as error:
 		st.error(str(error))
 	else:
-		#romain4
+		#romain5
 		if st.session_state.pop("refresh_composer", False):
 			st.rerun()
 
@@ -628,7 +649,7 @@ def _handle_turn(text="", audio=None, files=None):
 		st.warning(f"Seules les {MAX_IMAGES} premières images sont envoyées.")
 	images = [prepare_image(uploaded.getvalue()) for uploaded in uploads[:MAX_IMAGES]]
 
-	#romain4
+	#romain5
 	if question and not images:
 		intent, spoken_topic = post_intent(
 			question,
@@ -722,7 +743,7 @@ def _handle_turn(text="", audio=None, files=None):
 			assistant_message.update(voice_timings)
 		if speech:
 			assistant_message["speech"] = speech
-			#romain4
+			#romain5
 			if st.session_state.get("refresh_composer"):
 				st.session_state.play_last_speech = True
 		st.session_state.messages.append(assistant_message)

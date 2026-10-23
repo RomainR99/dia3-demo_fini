@@ -19,7 +19,7 @@ load_dotenv()
 
 _FENCE = re.compile(r"^```[a-z]*\n?|```$", re.IGNORECASE)
 
-#romain4
+#romain5
 # Phrases entières, sans accent. « oui » et « vas-y » en font partie.
 _AGREEMENTS = {
     "oui", "ouais", "ouai", "ok", "okay", "daccord", "dac",
@@ -32,7 +32,7 @@ _AGREEMENTS = {
     "redige le post", "cree le post", "creer le post",
     "ecris le post", "lance", "lance le post",
 }
-#romain4
+#romain5
 # Ces débuts demandent d'écrire tout de suite, si la suite donne le sujet.
 _WRITE_NOW = (
     "redige",
@@ -47,16 +47,16 @@ _WRITE_NOW = (
     "je veux le post",
     "fais moi un post",
 )
-#romain4
+#romain5
 _GREETINGS = {
     "bonjour", "salut", "hello", "merci", "au revoir",
     "bonne journee", "coucou", "bonsoir", "ciao",
 }
-#romain4
+#romain5
 _EMPTY_WRITE = {"", "le", "le post", "un post", "moi le post", "moi un post"}
 
 
-#romain4
+#romain5
 def _fold(text):
     """Minuscules, sans accent, apostrophe ni trait d'union."""
     normalized = unicodedata.normalize("NFD", (text or "").lower())
@@ -67,7 +67,7 @@ def _fold(text):
     return " ".join(folded.split())
 
 
-#romain4
+#romain5
 def _asks_to_write(folded):
     """Vrai si la phrase demande un post et donne déjà le sujet."""
     for cue in _WRITE_NOW:
@@ -77,7 +77,7 @@ def _asks_to_write(folded):
     return False
 
 
-#romain4
+#romain5
 def _is_agreement(folded):
     """Vrai si toute la phrase est un accord, pas un nouveau sujet."""
     if folded in _AGREEMENTS:
@@ -92,7 +92,7 @@ def _is_agreement(folded):
     return False
 
 
-#romain4
+#romain5
 def _topic_from(text):
     """Sujet tiré de la phrase dite ou tapée."""
     return {
@@ -247,7 +247,7 @@ class Post:
         self.draft = ""
         self.validated = ""
 
-    #romain4
+    #romain5
     def post_intent(self, text, pending=False):
         """Classe une phrase avant de rédiger.
 
@@ -278,7 +278,7 @@ class Post:
             return "offer", _topic_from(text)
         return "chat", None
 
-    #romain4
+    #romain5
     def _says_yes(self, text):
         """Demande au modèle si la phrase lance la rédaction.
 
@@ -363,7 +363,7 @@ def clear_post():
     post.clear_post()
 
 
-#romain4
+#romain5
 def post_intent(text, pending=False):
     """Même rôle que `Post.post_intent`."""
     return post.post_intent(text, pending=pending)

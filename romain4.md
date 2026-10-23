@@ -4,7 +4,7 @@
 
 **Environ 6 heures** sans IA, en débutant. Le temps passe dans le bouton micro. Streamlit n'a pas de bouton « maintenir pour parler ». Il faut une page HTML dans un dossier à part.
 
-Ce guide part de zéro pour ce lot seulement. Les sujets, le post et l'agent existent déjà. Chaque changement porte le commentaire `#romain4`. Les docstrings disent le rôle de chaque fonction.
+Ce guide part de zéro pour ce lot seulement. Les sujets, le post et l'agent existent déjà. Le micro, le clavier et Inspirer portent le commentaire `#romain4`. Le bouton **Créer le post** et l'accord à l'oral portent `#romain5`. Les docstrings disent le rôle de chaque fonction.
 
 ## Ce que l'utilisateur voit
 
@@ -297,7 +297,7 @@ La docstring de `propose_topics` dit : exactement 3 sujets, et la page n'affiche
 `_show_topics` s'affiche dans la colonne du micro, juste en dessous. Le code de `app.py` est en tabulations. `_choose_topic` vide `post_for` pour que `_show_post` rappelle `draft_post`.
 
 ```python
-#romain4
+#romain5
 def _choose_topic(topic):
 	"""Retient le sujet et force une nouvelle rédaction.
 
@@ -307,7 +307,7 @@ def _choose_topic(topic):
 	st.session_state.post_for = None
 
 
-#romain4
+#romain5
 def _show_topics(user_id):
 	"""Affiche Inspirer, puis trois titres, sous le micro.
 
@@ -337,11 +337,11 @@ def _show_topics(user_id):
 			if not st.session_state.topics:
 				st.info("Aucun sujet pour l'instant. Rafraîchis la veille.")
 	for index, topic in enumerate(st.session_state.get("topics") or []):
-		#romain4
+		#romain5
 		if st.button(topic["title"], key=f"inspire-{index}"):
 			_choose_topic(topic)
 	offered = st.session_state.get("offered_topic")
-	#romain4
+	#romain5
 	if offered and st.session_state.get("post_for") != offered.get("title"):
 		st.caption(offered.get("title") or "")
 		if st.button("Créer le post", key="create_post"):
@@ -356,7 +356,7 @@ L'appel est dans la colonne du micro, après `hold_to_talk` :
 			AUDIO_MIN_PEAK,
 			key="hold_mic",
 		)
-		#romain4
+		#romain5
 		_show_topics(st.session_state.user_id)
 ```
 
@@ -452,7 +452,7 @@ def _handle_turn(text="", audio=None, files=None):
 Le reste du tour (images, réponse, voix, historique, base) ne change que pour trois cas, juste après avoir obtenu `question` et avant l'appel à l'agent :
 
 ```python
-	#romain4
+	#romain5
 	if question and not images:
 		intent, spoken_topic = post_intent(
 			question,
@@ -477,7 +477,7 @@ Le reste du tour (images, réponse, voix, historique, base) ne change que pour t
 `post_intent` est dans `post.py`, pour que `app.py` n'appelle pas Groq lui-même. À la fin du fichier :
 
 ```python
-#romain4
+#romain5
 def post_intent(text, pending=False):
     """Même rôle que `Post.post_intent`."""
     return post.post_intent(text, pending=pending)
@@ -485,7 +485,7 @@ def post_intent(text, pending=False):
 
 ## Sujet donné, bouton, accord à l'oral
 
-À ajouter dans `post.py`. Quatre espaces. `post_intent` renvoie un couple.
+Ce lot porte le commentaire `#romain5`. À ajouter dans `post.py`. Quatre espaces. `post_intent` renvoie un couple.
 
 | Valeur | Quand | Effet sur la page |
 | --- | --- | --- |
@@ -499,7 +499,7 @@ Les listes et les fonctions à recopier :
 ```python
 import unicodedata
 
-#romain4
+#romain5
 _AGREEMENTS = {
     "oui", "ouais", "ouai", "ok", "okay", "daccord", "dac",
     "vas y", "allez", "allez y", "go", "banco", "parfait",
@@ -511,7 +511,7 @@ _AGREEMENTS = {
     "redige le post", "cree le post", "creer le post",
     "ecris le post", "lance", "lance le post",
 }
-#romain4
+#romain5
 _WRITE_NOW = (
     "redige",
     "ecris le post",
@@ -525,16 +525,16 @@ _WRITE_NOW = (
     "je veux le post",
     "fais moi un post",
 )
-#romain4
+#romain5
 _GREETINGS = {
     "bonjour", "salut", "hello", "merci", "au revoir",
     "bonne journee", "coucou", "bonsoir", "ciao",
 }
-#romain4
+#romain5
 _EMPTY_WRITE = {"", "le", "le post", "un post", "moi le post", "moi un post"}
 
 
-#romain4
+#romain5
 def _fold(text):
     """Minuscules, sans accent, apostrophe ni trait d'union."""
     normalized = unicodedata.normalize("NFD", (text or "").lower())
@@ -545,7 +545,7 @@ def _fold(text):
     return " ".join(folded.split())
 
 
-#romain4
+#romain5
 def _asks_to_write(folded):
     """Vrai si la phrase demande un post et donne déjà le sujet."""
     for cue in _WRITE_NOW:
@@ -555,7 +555,7 @@ def _asks_to_write(folded):
     return False
 
 
-#romain4
+#romain5
 def _is_agreement(folded):
     """Vrai si toute la phrase est un accord, pas un nouveau sujet."""
     if folded in _AGREEMENTS:
@@ -570,7 +570,7 @@ def _is_agreement(folded):
     return False
 
 
-#romain4
+#romain5
 def _topic_from(text):
     """Sujet tiré de la phrase dite ou tapée."""
     return {
@@ -583,7 +583,7 @@ def _topic_from(text):
 Méthodes de la classe `Post`, après `clear_post` :
 
 ```python
-    #romain4
+    #romain5
     def post_intent(self, text, pending=False):
         """Classe une phrase avant de rédiger.
 
@@ -614,7 +614,7 @@ Méthodes de la classe `Post`, après `clear_post` :
             return "offer", _topic_from(text)
         return "chat", None
 
-    #romain4
+    #romain5
     def _says_yes(self, text):
         """Demande au modèle si la phrase lance la rédaction.
 
