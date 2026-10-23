@@ -1,5 +1,7 @@
 import base64
 import io
+#romain7
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -71,6 +73,8 @@ from rss_watcher import digest_for, refresh_user
 from mail_watcher import MailError, connect_mailbox, matches_theme
 #romain6
 from gamma_client import GammaError, owner_key, refresh_generation, send_approved
+#romain7
+from video import VideoError, build_video
 
 # Départ du chrono : le script repart quand l'enregistrement vient d'être envoyé.
 run_started = time.perf_counter()
@@ -383,8 +387,8 @@ def _show_post(user_id):
 
 	Le brouillon est régénéré quand le sujet change. La zone de texte garde
 	les modifications. « Créer le post » enregistre ce texte comme source
-	du futur flux vidéo. « Envoyer à Gamma » crée les slides de ce texte
-	et le fichier de sous-titres, sans monter la vidéo.
+	de la vidéo. « Envoyer à Gamma » crée les slides et les sous-titres.
+	« Créer la vidéo » assemble images, voix du post et sous-titres.
 	"""
 	topic = st.session_state.get("chosen_topic")
 	if not topic:
@@ -430,10 +434,8 @@ def _show_post(user_id):
 		except PostError as error:
 			st.warning(str(error))
 	if st.session_state.get("video_source"):
-		st.success(
-			"Texte enregistré. Il partira vers la vidéo et les visuels. "
-			"Cette étape n'est pas encore branchée."
-		)
+		#romain7
+		st.success("Texte enregistré. Envoie-le à Gamma, puis crée la vidéo.")
 		#romain6
 		if st.button("Envoyer à Gamma", key="send_gamma"):
 			try:
@@ -456,6 +458,21 @@ def _show_post(user_id):
 			)
 		elif sent.get("job_status") == "pending":
 			st.info("Gamma prépare encore les slides. Vérifie-les dans les réglages.")
+		#romain7
+		if sent.get("gamma_url") and st.button("Créer la vidéo", key="build_video"):
+			try:
+				with st.spinner("Montage de la vidéo…"):
+					build_video(
+						st.session_state.user_id,
+						st.session_state.video_source,
+					)
+			except VideoError as error:
+				st.warning(str(error))
+			else:
+				st.rerun()
+		video_path = sent.get("video_path") or ""
+		if video_path and os.path.isfile(video_path):
+			st.video(video_path)
 	elif st.session_state.get("validated_post"):
 		st.success("Version validée enregistrée. C'est elle qui partira en vidéo.")
 

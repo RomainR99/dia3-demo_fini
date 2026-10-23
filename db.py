@@ -120,9 +120,19 @@ CREATE TABLE IF NOT EXISTS gamma_accounts (
     gamma_url TEXT,
     slide_count INTEGER,
     job_status TEXT,
-    subtitle_path TEXT
+    subtitle_path TEXT,
+    video_path TEXT
 );
 """
+
+
+#romain7
+def _ensure_column(conn, table, column, declaration):
+    """Ajoute une colonne si la table existait déjà sans elle."""
+    found = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    names = {row["name"] for row in found}
+    if column not in names:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
 
 # Base de données
@@ -133,6 +143,8 @@ def init_db():
         conn.executescript(MAILBOX_SCHEMA)
         #romain6
         conn.executescript(GAMMA_SCHEMA)
+        #romain7
+        _ensure_column(conn, "gamma_accounts", "video_path", "TEXT")
 
 
 # Base de données
@@ -454,7 +466,8 @@ def gamma_view(user_id):
         row = conn.execute(
             """
             SELECT api_key, slide_language, subtitle_language, connected_at,
-                   generation_id, gamma_url, slide_count, job_status, subtitle_path
+                   generation_id, gamma_url, slide_count, job_status, subtitle_path,
+                   video_path
             FROM gamma_accounts WHERE user_id = ?
             """,
             (user_id,),
@@ -469,6 +482,7 @@ def gamma_view(user_id):
             "slide_count": 0,
             "job_status": "",
             "subtitle_path": "",
+            "video_path": "",
         }
     return {
         "connected": bool((row["api_key"] or "").strip()),
@@ -479,6 +493,8 @@ def gamma_view(user_id):
         "slide_count": row["slide_count"] or 0,
         "job_status": row["job_status"] or "",
         "subtitle_path": row["subtitle_path"] or "",
+        #romain7
+        "video_path": row["video_path"] or "",
     }
 
 
@@ -557,4 +573,14 @@ def disconnect_gamma(user_id):
             WHERE user_id = ?
             """,
             (user_id,),
+        )
+
+
+#romain7
+def save_video_path(user_id, video_path):
+    """Mémorise le mp4 du compte. Le fichier reste sur la machine."""
+    with db() as conn:
+        conn.execute(
+            "UPDATE gamma_accounts SET video_path = ? WHERE user_id = ?",
+            (video_path, user_id),
         )

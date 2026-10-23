@@ -96,6 +96,10 @@ VIDEO_MAX_SECONDS = 150
 GAMMA_TIMEOUT = 60
 GAMMA_POLL_SECONDS = 5
 GAMMA_POLL_TRIES = 6
+#romain7
+# L'export PNG est une archive, une image par slide. Trois minutes d'attente.
+EXPORT_POLL_TRIES = 36
+VIDEO_DOWNLOAD_TIMEOUT = 120
 DEFAULT_SLIDE_LANGUAGE = "fr"
 DEFAULT_SUBTITLE_LANGUAGE = "fr"
 # Codes acceptés par textOptions.language. La vidéo parle cette langue.

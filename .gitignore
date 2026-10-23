@@ -156,6 +156,8 @@ activemq-data/
 data/*.db
 data/*.db-*
 data/subtitles/
+#romain7
+data/videos/
 .venv
 env/
 venv/

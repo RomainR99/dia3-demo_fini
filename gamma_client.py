@@ -6,6 +6,7 @@ import os
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import certifi
@@ -26,6 +27,8 @@ from config import (
     SLIDE_SECONDS,
     TEXT_MODEL,
     VIDEO_MAX_SECONDS,
+    #romain7
+    EXPORT_POLL_TRIES,
 )
 from db import (
     gamma_view,
@@ -320,3 +323,49 @@ def refresh_generation(user_id):
         view.get("subtitle_path") or "",
     )
     return {"status": status, "gamma_url": url}
+
+
+#romain7
+def start_png_export(api_key, gamma_id):
+    """Lance l'export PNG des slides déjà créées.
+
+    Gamma renvoie un identifiant d'export, pas encore le fichier.
+    L'archive finale contient une image par slide.
+    """
+    data = _request(
+        "POST",
+        f"/gammas/{urllib.parse.quote(gamma_id)}/export",
+        api_key,
+        {"exportAs": "png"},
+    )
+    export_id = data.get("exportId") or ""
+    if not export_id:
+        raise GammaError("Gamma n'a pas lancé l'export des slides.")
+    return export_id
+
+
+#romain7
+def wait_png_export(api_key, export_id):
+    """Attend l'archive PNG. L'adresse de téléchargement ne se garde pas.
+
+    Elle expire au bout d'une semaine et suffit à télécharger le fichier.
+    Seul l'appelant l'utilise, le temps du téléchargement.
+    """
+    for attempt in range(EXPORT_POLL_TRIES):
+        if attempt:
+            time.sleep(GAMMA_POLL_SECONDS)
+        data = _request(
+            "GET",
+            f"/exports/{urllib.parse.quote(export_id)}",
+            api_key,
+        )
+        status = data.get("status") or "pending"
+        if status == "completed":
+            url = data.get("exportUrl") or ""
+            if not url:
+                raise GammaError("Gamma n'a pas renvoyé les images.")
+            return url
+        if status == "failed":
+            message = (data.get("error") or {}).get("message") or ""
+            raise GammaError(message or "Gamma n'a pas pu exporter les slides.")
+    raise GammaError("L'export des slides n'est pas fini. Réessaie.")
