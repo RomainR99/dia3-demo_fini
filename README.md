@@ -56,3 +56,14 @@ La dernière photo, elle, reste dans l'historique envoyé. Une question de suivi
 ## Avatar
 
 L'animation du visage à partir de la voix passe par Audio2Face. Le téléchargement gratuit est ici : [Audio2Face](https://www.reallusion.com/iclone/nvidia-omniverse/Audio2Face.html#free-download).
+
+La bouche de Bonnie est calculée par l'API cloud NVIDIA, qui parle en gRPC, pas en HTTP. Depuis le dossier du projet, environnement activé :
+
+```bash
+pip install grpcio==1.85.0
+pip install --no-deps https://github.com/NVIDIA/Audio2Face-3D-Samples/raw/main/proto/sample_wheel/nvidia_ace-1.2.0-py3-none-any.whl
+```
+
+`grpcio` est le client qui ouvre la connexion vers `grpc.nvcf.nvidia.com`. La version `1.85.0` est celle qui tourne avec Python 3.12 du projet.
+
+`nvidia-ace` apporte les messages protobuf d'Audio2Face : l'envoi du WAV et la lecture des blendshapes. `--no-deps` est obligatoire. Sans ce drapeau, pip installe aussi protobuf 4.24, alors que Streamlit utilise protobuf 7. La version 4.24 casse l'application. Les messages protobuf, eux, se chargent quand même avec la version déjà présente.

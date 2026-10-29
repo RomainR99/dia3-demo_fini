@@ -5,3 +5,5 @@ streamlit==1.66.0
 #flux RSS
 feedparser==6.0.14
 certifi==2026.10.18
+#avatar
+grpcio==1.85.0

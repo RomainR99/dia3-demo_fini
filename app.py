@@ -75,11 +75,17 @@ from mail_watcher import MailError, connect_mailbox, matches_theme
 from gamma_client import GammaError, owner_key, refresh_generation, send_approved
 #romain7
 from video import VideoError, build_video
+#avatar
+from avatar import mount_avatar, play_speech, show_avatar
 
 # Départ du chrono : le script repart quand l'enregistrement vient d'être envoyé.
 run_started = time.perf_counter()
 
 st.set_page_config(page_title=PAGE_TITLE)
+#avatar
+# La boîte est créée avant le titre : Bonnie reste en haut, y compris sur la connexion.
+avatar_box = st.empty()
+mount_avatar(avatar_box)
 st.title(APP_TITLE)
 st.toggle("Réponse vocale", key="speak")
 
@@ -505,7 +511,7 @@ def voice_line(stt_s, llm_s, tts_s, audio_s=None):
 	return line
 
 
-def show_message(message, autoplay=False):
+def show_message(message, autoplay=False, player_key=None):
 	"""Affiche un tour. `autoplay` relance la voix après un rafraîchissement."""
 	for data_url in message.get("images") or []:
 		encoded = data_url.split(",", 1)[1]
@@ -526,8 +532,8 @@ def show_message(message, autoplay=False):
 			message["total_s"],
 		))
 	if message.get("speech"):
-		#romain5
-		st.audio(message["speech"], format="audio/wav", autoplay=autoplay)
+		#avatar
+		play_speech(message["speech"], autoplay=autoplay, key=player_key)
 
 
 def play_chained(wav, speech_chunks, ready_at):
@@ -538,12 +544,12 @@ def play_chained(wav, speech_chunks, ready_at):
 	if ready_at and now < ready_at:
 		time.sleep(ready_at - now)
 	speech_chunks.append(wav)
-	#romain5
+	#avatar
 	# Le rafraîchissement qui affiche « Créer le post » rejoue la voix une fois.
-	st.audio(
+	play_speech(
 		wav,
-		format="audio/wav",
 		autoplay=not st.session_state.get("refresh_composer"),
+		key=f"live-{hash(wav)}",
 	)
 	started = time.perf_counter()
 	return started + wav_seconds(wav), started - run_started
@@ -628,6 +634,8 @@ def stream_voice_answer(question, images, stt_s, veille, context_path):
 	}
 
 
+#avatar
+show_avatar()
 # Base de données
 #persona
 require_user()
@@ -644,6 +652,8 @@ for index, message in enumerate(history):
 		show_message(
 			message,
 			autoplay=play_last and index == last and message["role"] == "assistant",
+			#avatar
+			player_key=f"hist-{index}",
 		)
 
 #romain4

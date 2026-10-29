@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    audio { width: 100%; }
+  </style>
+</head>
+<body>
+  <audio id="voix" controls preload="auto"></audio>
+  <script>
+    // #avatar — le bouton lecture du post prévient Python, qui appelle Audio2Face
+    const voix = document.getElementById("voix");
+    let args = { audio: "", speech_id: "", token: "", autoplay: false };
+    let ignore = false;
+    let dejaJoue = "";
+    let charge = "";
+
+    function envoyer(type, data) {
+      window.parent.postMessage(Object.assign({
+        isStreamlitMessage: true,
+        type: type,
+      }, data), "*");
+    }
+
+    function valeur(value) {
+      envoyer("streamlit:setComponentValue", { value: value, dataType: "json" });
+    }
+
+    voix.addEventListener("play", function () {
+      if (ignore) {
+        ignore = false;
+        return;
+      }
+      voix.pause();
+      valeur({ action: "play", id: args.speech_id, nonce: Date.now() });
+    });
+
+    window.addEventListener("message", function (event) {
+      const data = event.data;
+      if (!data || data.type !== "streamlit:render") return;
+      args = data.args || args;
+      envoyer("streamlit:setFrameHeight", { height: 54 });
+      if (args.audio && charge !== args.speech_id) {
+        charge = args.speech_id;
+        voix.src = "data:audio/wav;base64," + args.audio;
+      }
+      if (args.autoplay && args.token && args.token !== dejaJoue && args.token.indexOf(args.speech_id + ":") === 0) {
+        dejaJoue = args.token;
+        ignore = true;
+        voix.currentTime = 0;
+        voix.play();
+      }
+    });
+
+    envoyer("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>

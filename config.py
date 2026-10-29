@@ -123,6 +123,13 @@ GAMMA_LANGUAGES = {
     "vi": "Vietnamien",
 }
 
+#avatar
+# La clé reste dans .env. Le script ne la recopie nulle part.
+NVIDIA_KEY = "NVIDIA_API_KEY"
+A2F_TARGET = "grpc.nvcf.nvidia.com:443"
+# Modèle Claire publié sur build.nvidia.com, avec la langue.
+A2F_FUNCTION_ID = "0961a6da-fb9e-4f2e-8491-247e5fd7bf8d"
+
 #romain3
 # 150 mots par minute à l'oral. 280 à 480 mots font environ 2 à 3 minutes.
 POST_WORDS_PER_MINUTE = 150

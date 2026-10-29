@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 300px; background: #f4f1ea; overflow: hidden; }
+    #scene { width: 100%; height: 300px; display: block; }
+    #etat {
+      position: absolute; left: 12px; bottom: 8px;
+      font: 13px sans-serif; color: #5c5346;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="etat">Chargement de Bonnie…</div>
+  <script type="module">
+    // #avatar — Bonnie, clés de bouche pilotées par les blendshapes ARKit
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+    const canvas = document.getElementById("scene");
+    const etat = document.getElementById("etat");
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0xf4f1ea, 1);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(28, 16 / 9, 0.0001, 10);
+    let taillePosee = "";
+
+    function ajusterTaille() {
+      // #avatar — au premier rendu la largeur vaut 0. setSize(0) la fige et Bonnie disparaît.
+      const largeur = document.documentElement.clientWidth || window.innerWidth || 640;
+      if (largeur < 2) return;
+      const voulu = largeur + "x300";
+      if (taillePosee === voulu) return;
+      taillePosee = voulu;
+      renderer.setSize(largeur, 300, true);
+      camera.aspect = largeur / 300;
+      camera.updateProjectionMatrix();
+    }
+    scene.add(new THREE.HemisphereLight(0xfff4e5, 0x445566, 1.1));
+    const lampe = new THREE.DirectionalLight(0xffffff, 1.4);
+    lampe.position.set(0.02, 0.03, 0.04);
+    scene.add(lampe);
+
+    let modele = null;
+    let images = [];
+    let jeton = "";
+    let depart = 0;
+    let enCours = false;
+
+    function envoyer(type, data) {
+      window.parent.postMessage(Object.assign({
+        isStreamlitMessage: true,
+        type: type,
+      }, data), "*");
+    }
+
+    function poidsA(temps) {
+      if (!images.length) return null;
+      let avant = images[0];
+      for (let i = 1; i < images.length; i++) {
+        const apres = images[i];
+        if (apres.time_code >= temps) {
+          const duree = apres.time_code - avant.time_code || 1;
+          const mix = Math.min(1, Math.max(0, (temps - avant.time_code) / duree));
+          const poids = {};
+          const noms = new Set([
+            ...Object.keys(avant.weights || {}),
+            ...Object.keys(apres.weights || {}),
+          ]);
+          noms.forEach(function (nom) {
+            const a = (avant.weights && avant.weights[nom]) || 0;
+            const b = (apres.weights && apres.weights[nom]) || 0;
+            poids[nom] = a + (b - a) * mix;
+          });
+          return poids;
+        }
+        avant = apres;
+      }
+      return avant.weights || {};
+    }
+
+    function appliquer(poids) {
+      if (!modele) return;
+      modele.traverse(function (objet) {
+        if (!objet.isMesh || !objet.morphTargetInfluences) return;
+        for (let i = 0; i < objet.morphTargetInfluences.length; i++) {
+          objet.morphTargetInfluences[i] = 0;
+        }
+        const dictionnaire = objet.morphTargetDictionary || {};
+        Object.keys(dictionnaire).forEach(function (nom) {
+          objet.morphTargetInfluences[dictionnaire[nom]] = poids[nom] || 0;
+        });
+        if (dictionnaire.JawOpen !== undefined) {
+          const extra = ((poids.MouthLowerDownLeft || 0) + (poids.MouthLowerDownRight || 0)) * 0.35;
+          objet.morphTargetInfluences[dictionnaire.JawOpen] = Math.min(
+            1,
+            objet.morphTargetInfluences[dictionnaire.JawOpen] + extra
+          );
+        }
+      });
+    }
+
+    function animer(instant) {
+      if (!jeton || !images.length) {
+        enCours = false;
+        return;
+      }
+      const temps = (instant - depart) / 1000;
+      const poids = poidsA(temps);
+      if (poids) appliquer(poids);
+      const fin = images[images.length - 1].time_code || 0;
+      if (temps < fin + 0.15) requestAnimationFrame(animer);
+      else enCours = false;
+    }
+
+    function lancer(nouveauJeton, nouvellesImages) {
+      if (!nouveauJeton || nouveauJeton === jeton) return;
+      jeton = nouveauJeton;
+      images = nouvellesImages || [];
+      depart = performance.now();
+      etat.textContent = images.length ? "Bonnie parle" : "";
+      if (!enCours) {
+        enCours = true;
+        requestAnimationFrame(animer);
+      }
+    }
+
+    function cadrer() {
+      const boite = new THREE.Box3().setFromObject(modele);
+      const taille = boite.getSize(new THREE.Vector3());
+      const centre = boite.getCenter(new THREE.Vector3());
+      const plusGrand = Math.max(taille.x, taille.y, taille.z, 0.001);
+      // #avatar — le visage regarde +Z. La caméra en -Z ne montrait que la nuque.
+      camera.position.set(centre.x, centre.y + plusGrand * 0.02, centre.z + plusGrand * 2.4);
+      camera.near = plusGrand / 100;
+      camera.far = plusGrand * 20;
+      camera.lookAt(centre);
+      camera.updateProjectionMatrix();
+    }
+
+    function dessiner() {
+      ajusterTaille();
+      renderer.render(scene, camera);
+      requestAnimationFrame(dessiner);
+    }
+
+    const chargeur = new GLTFLoader();
+    chargeur.load("bonnie.glb?v=3", function (gltf) {
+      modele = gltf.scene;
+      scene.add(modele);
+      cadrer();
+      etat.textContent = "";
+    }, undefined, function () {
+      etat.textContent = "Bonnie ne s'affiche pas. Le fichier bonnie.glb est introuvable.";
+    });
+    requestAnimationFrame(dessiner);
+
+    window.addEventListener("message", function (event) {
+      const data = event.data;
+      if (!data || data.type !== "streamlit:render") return;
+      const args = data.args || {};
+      envoyer("streamlit:setFrameHeight", { height: 300 });
+      lancer(args.token || "", args.frames || []);
+    });
+
+    envoyer("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>

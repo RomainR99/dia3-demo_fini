@@ -6,8 +6,34 @@ Pour Bonnie, ces crédits suffisent à peaufiner l'avatar et à valider le code 
 
 ## Sommaire
 
+- [Branchements dans l'application](#branchements)
 - [Pendant le développement](#developpement)
 - [Quand l'application est en ligne](#en-ligne)
+
+## Branchements dans l'application
+
+Bonnie est le fichier `asset/Bonnie1.blend`. Il n'a ni armature ni clés de forme. `avatar/export_bonnie.py` lui ajoute six clés de bouche (JawOpen, MouthClose, MouthFunnel, MouthPucker, MouthSmileLeft, MouthSmileRight) et écrit `avatar/view/bonnie.glb`.
+
+Les maillages affichés avaient un matériau gris. Les teintes sont sur `skin.001` (peau) et `hair.001` (cheveux). L'export les recopie dans les couleurs de sommets, sinon la page reste grise.
+
+L'avatar est affiché en haut de chaque page, y compris la connexion. Le lecteur du post remplace l'ancien `st.audio`. Un clic sur lecture envoie ce WAV à Audio2Face. La réponse vocale qui démarre toute seule fait le même appel avant de jouer le son.
+
+`avatar/audio2face.py` lit `NVIDIA_API_KEY` dans `.env`. La clé n'est pas dans le code. Le terminal qui a lancé Streamlit affiche la structure reçue : noms ARKit, nombre d'images, poids de la première image, et le maximum de JawOpen.
+
+Installation, depuis le dossier du projet, environnement activé :
+
+```bash
+pip install grpcio==1.85.0
+pip install --no-deps https://github.com/NVIDIA/Audio2Face-3D-Samples/raw/main/proto/sample_wheel/nvidia_ace-1.2.0-py3-none-any.whl
+```
+
+`--no-deps` est obligatoire. Le paquet NVIDIA demande protobuf 4.24, et cette version casse Streamlit.
+
+Pour refaire le GLB après un changement du .blend :
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender --background asset/Bonnie1.blend --python avatar/export_bonnie.py
+```
 
 ## Pendant le développement
 
