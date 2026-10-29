@@ -63,17 +63,17 @@
     let prochainCligne = 0;
     // #avatar — le jeton reçu du lecteur. Un rendu Streamlit plus ancien ne doit pas le remplacer.
     let jetonMessage = "";
-    // #avatar — calibration. JawOpen plafonne à 0,7 pour éviter l'effet « gobo ».
+    // #avatar — plafond seulement. Multiplier en plus étouffait la parole.
     const CALIBRAGE = {
-      JawOpen: 0.7,
-      MouthClose: 0.4,
-      MouthFunnel: 0.35,
-      MouthPucker: 0.35,
-      MouthSmileLeft: 0.4,
-      MouthSmileRight: 0.4,
+      JawOpen: 0.85,
+      MouthClose: 0.75,
+      MouthFunnel: 0.8,
+      MouthPucker: 0.75,
+      MouthSmileLeft: 0.8,
+      MouthSmileRight: 0.8,
     };
     const SEUIL_BRUIT = 0.05;
-    const LISSAGE = 0.22;
+    const LISSAGE = 0.62;
     let cible = {};
     let courant = {};
     let historique = [];
@@ -117,10 +117,12 @@
       Object.keys(poids || {}).forEach(function (nom) {
         let valeur = Math.max(0, poids[nom] || 0);
         if (nom === "JawOpen") {
-          valeur += ((poids.MouthLowerDownLeft || 0) + (poids.MouthLowerDownRight || 0)) * 0.2;
+          valeur += ((poids.MouthLowerDownLeft || 0) + (poids.MouthLowerDownRight || 0)) * 0.35;
+          // #avatar — l'ovale reste fermé sous ~0,6. On pousse la voix dans la zone visible.
+          if (valeur >= SEUIL_BRUIT) valeur = Math.pow(Math.min(1, valeur), 0.32);
         }
-        const gain = CALIBRAGE[nom] !== undefined ? CALIBRAGE[nom] : 0.4;
-        valeur = Math.min(gain, valeur * gain);
+        const gain = CALIBRAGE[nom] !== undefined ? CALIBRAGE[nom] : 0.75;
+        valeur = Math.min(gain, valeur);
         brut[nom] = valeur;
         energie = Math.max(energie, valeur);
       });
@@ -131,7 +133,7 @@
     function viser(poids) {
       // #avatar — moyenne glissante, puis le rendu interpole vers cette cible.
       historique.push(preparer(poids));
-      if (historique.length > 4) historique.shift();
+      if (historique.length > 1) historique.shift();
       const noms = new Set();
       historique.forEach(function (image) {
         Object.keys(image).forEach(function (nom) { noms.add(nom); });
@@ -280,7 +282,7 @@
     }
 
     const chargeur = new GLTFLoader();
-    chargeur.load("bonnie.glb?v=6", function (gltf) {
+    chargeur.load("bonnie.glb?v=10", function (gltf) {
       modele = gltf.scene;
       scene.add(modele);
       repos.x = modele.rotation.x;
@@ -328,6 +330,7 @@
           return;
         }
         const jaw = Math.max(0, data.jaw || 0);
+        // #avatar — le pincement refermait les lèvres pendant que la mâchoire les ouvrait.
         viser(jaw < SEUIL_BRUIT ? {} : { JawOpen: jaw });
         etat.textContent = jaw >= SEUIL_BRUIT ? "Bonnie parle" : "";
         return;

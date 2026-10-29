@@ -62,16 +62,16 @@
         pousser({ type: "bonnie-niveau", jaw: 0, playing: false });
         return;
       }
-      const data = new Uint8Array(analyseur.fftSize);
-      analyseur.getByteTimeDomainData(data);
+      const temps = new Uint8Array(analyseur.fftSize);
+      analyseur.getByteTimeDomainData(temps);
       let somme = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
+      for (let i = 0; i < temps.length; i++) {
+        const v = (temps[i] - 128) / 128;
         somme += v * v;
       }
-      const rms = Math.sqrt(somme / data.length);
-      // #avatar — sous ce seuil, le souffle et le bruit de fond ne comptent pas.
-      const jaw = Math.max(0, (rms - 0.05) * 3.2);
+      const rms = Math.sqrt(somme / temps.length);
+      // #avatar — sous ce seuil, le souffle ne compte pas. La courbe ouvre déjà à voix moyenne.
+      const jaw = Math.min(1, Math.max(0, (rms - 0.035) * 12));
       pousser({ type: "bonnie-niveau", jaw: jaw, playing: true });
       suiviVolume = requestAnimationFrame(suivreVolume);
     }

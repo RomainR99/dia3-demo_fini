@@ -61,30 +61,41 @@ def _lisse(valeur):
     return valeur * valeur * (3.0 - 2.0 * valeur)
 
 
+def _cloche(valeur, centre, rayon):
+    #avatar
+    ecart = abs(valeur - centre) / rayon
+    if ecart >= 1.0:
+        return 0.0
+    return _lisse(1.0 - ecart)
+
+
 def _zone_bouche(world, center):
     #avatar
-    # La face regarde vers -Y. Z est le haut. Le poids s'estompe jusqu'aux joues.
+    # La face regarde vers -Y. Z est le haut. L'ouverture est un ovale au centre des lèvres.
     dx = world.x - center.x
     devant = center.y - world.y
     bas = center.z - world.z
-    if devant < -0.0012:
-        return 0.0, 0.0, 0.0
-    face = _lisse((devant + 0.0012) / 0.0022)
-    cote = 1.0 - _lisse((abs(dx) - 0.0013) / 0.0020)
-    if face <= 0.0 or cote <= 0.0:
-        return 0.0, 0.0, 0.0
-    machoire = 0.0
-    if bas > 0.0:
-        ouvert = _lisse(min(1.0, bas / 0.00055))
-        menton = 1.0 - _lisse(max(0.0, (bas - 0.0020) / 0.0022))
-        machoire = ouvert * menton * cote * face
-    levre = _lisse(1.0 - min(1.0, abs(bas) / 0.00075)) * cote * face
-    return machoire, levre, dx
+    if devant < -0.0006:
+        return 0.0, 0.0, 0.0, 0.0
+    face = _lisse((devant + 0.0006) / 0.0016)
+    ovale = 1.0 - _lisse((abs(dx) - 0.00025) / 0.00105)
+    if face <= 0.0:
+        return 0.0, 0.0, 0.0, dx
+    masque = face * ovale
+    levre_bas = _cloche(bas, 0.0012, 0.00085) * masque
+    levre_haut = _cloche(bas, -0.00055, 0.0007) * masque
+    menton = 0.0
+    if 0.0015 < bas < 0.0048:
+        suit = _lisse(min(1.0, (bas - 0.0015) / 0.0008))
+        cou = 1.0 - _lisse(max(0.0, (bas - 0.0031) / 0.0014))
+        large = 1.0 - _lisse((abs(dx) - 0.00055) / 0.00115)
+        menton = suit * cou * face * large
+    return levre_bas, levre_haut, menton, dx
 
 
 def _bouche(head_name, teeth_name):
     #avatar
-    # Toute la mâchoire descend ensemble. Un anneau de lèvres seul déchirait le visage.
+    # Les lèvres s'écartent au centre. Le menton suit, moins fort, pour ne pas tomber d'un bloc.
     head = bpy.data.objects[head_name]
     teeth = bpy.data.objects[teeth_name]
     samples = _points(teeth, step=8)
@@ -94,29 +105,33 @@ def _bouche(head_name, teeth_name):
     touched = 0
     for index, vertex in enumerate(head.data.vertices):
         world = head.matrix_world @ vertex.co
-        machoire, levre, dx = _zone_bouche(world, center)
-        if machoire <= 0.02 and levre <= 0.02:
+        levre_bas, levre_haut, menton, dx = _zone_bouche(world, center)
+        devant = center.y - world.y
+        face = _lisse((devant + 0.0006) / 0.0016) if devant > -0.0006 else 0.0
+        joue = face * _lisse(max(0.0, (abs(dx) - 0.00045) / 0.00055))
+        joue *= 1.0 - _lisse(min(1.0, abs(center.z - world.z) / 0.00115))
+        joue *= 1.0 - _lisse(max(0.0, (abs(dx) - 0.00145) / 0.00055))
+        if levre_bas <= 0.02 and levre_haut <= 0.02 and menton <= 0.02 and joue <= 0.02:
             continue
         # Après l'export, +Y du monde devient le bas de l'écran. Z avançait vers la caméra.
-        keys["JawOpen"].data[index].co = inverse @ (
-            world + Vector((0.0, 0.00062 * machoire, 0.0))
-        )
-        if levre > 0.02 and machoire > 0.0:
-            keys["MouthClose"].data[index].co = inverse @ (
-                world + Vector((0.0, -0.00028 * levre, 0.0))
-            )
+        descente = 0.0021 * levre_bas + 0.00042 * menton - 0.00095 * levre_haut
+        keys["JawOpen"].data[index].co = inverse @ (world + Vector((0.0, descente, 0.0)))
+        ferme = -0.00048 * levre_bas + 0.00028 * levre_haut
+        if abs(ferme) > 0.00002:
+            keys["MouthClose"].data[index].co = inverse @ (world + Vector((0.0, ferme, 0.0)))
         signe = 1.0 if dx >= 0.0 else -1.0
-        keys["MouthFunnel"].data[index].co = inverse @ (
-            world + Vector((signe * 0.00016 * levre, 0.0, 0.0))
-        )
-        keys["MouthPucker"].data[index].co = inverse @ (
-            world + Vector((-signe * 0.00012 * levre, 0.0, 0.0))
-        )
-        coin = _lisse(max(0.0, (abs(dx) - 0.00045) / 0.0011)) * levre
-        if coin > 0.02:
+        bord = _lisse(max(0.0, (abs(dx) - 0.00035) / 0.0007)) * (levre_bas + levre_haut)
+        if bord > 0.02:
+            keys["MouthFunnel"].data[index].co = inverse @ (
+                world + Vector((-signe * 0.00022 * bord, 0.00018 * levre_bas - 0.0001 * levre_haut, 0.0))
+            )
+            keys["MouthPucker"].data[index].co = inverse @ (
+                world + Vector((-signe * 0.0003 * bord, -0.00022 * levre_bas + 0.0001 * levre_haut, 0.0))
+            )
+        if joue > 0.02:
             side = "MouthSmileLeft" if dx < 0.0 else "MouthSmileRight"
             keys[side].data[index].co = inverse @ (
-                world + Vector((signe * 0.00008 * coin, -0.0002 * coin, 0.0))
+                world + Vector((signe * 0.00016 * joue, -0.0004 * joue, 0.0))
             )
         touched += 1
     print(f"{head_name}: {touched} sommets de mâchoire")
@@ -132,7 +147,7 @@ def _bouche(head_name, teeth_name):
             continue
         poids = _lisse(min(1.0, bas / 0.00035))
         tooth_keys["JawOpen"].data[index].co = inverse @ (
-            world + Vector((0.0, 0.0005 * poids, 0.0))
+            world + Vector((0.0, 0.0017 * poids, 0.0))
         )
         dropped += 1
     print(f"{teeth_name}: {dropped} sommets de dents du bas")
