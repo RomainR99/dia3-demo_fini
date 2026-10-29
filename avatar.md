@@ -1,21 +1,30 @@
-# Audio2Face pour le client final
+# Crédits NVIDIA pour Audio2Face
 
-Pour le client final, ça va être lourd s'il doit avoir Audio2Face ?
+NVIDIA met à disposition des crédits gratuits, en général **1 000 crédits** à l'inscription, sur le portail [NVIDIA Build](https://build.nvidia.com/). Ils servent à tester les API NIM, dont [Audio2Face](https://build.nvidia.com/nvidia/audio2face-3d/api).
 
-Non. L'utilisateur final n'aura rien à installer. Son application sera aussi légère qu'une application classique comme Duolingo ou TikTok.
+Pour Bonnie, ces crédits suffisent à peaufiner l'avatar et à valider le code sur Mac pendant des mois.
 
-Il y a deux architectures possibles, et dans les deux cas le client final n'installe pas Audio2Face.
+## Sommaire
 
-## 1. Tout est calculé sur le serveur
+- [Pendant le développement](#developpement)
+- [Quand l'application est en ligne](#en-ligne)
 
-C'est la méthode utilisée par Praktika. L'application sur le téléphone de l'utilisateur ne fait qu'afficher de la vidéo ou des données 3D légères.
+## Pendant le développement
 
-- **Sur le téléphone** : l'application est très légère. L'utilisateur parle dans son micro, le son est envoyé au serveur.
-- **Sur le serveur** : c'est là que se trouvent le modèle de conversation, la voix et NVIDIA Audio2Face. Le serveur calcule l'animation des lèvres en quelques millisecondes, puis l'envoie au téléphone sous forme de flux de données (les coordonnées des mouvements) ou de flux vidéo.
-- **Résultat** : l'utilisateur peut avoir un vieux smartphone ou un ordinateur d'entrée de gamme. L'avatar fonctionnera de manière fluide.
+Gratuit.
 
-## 2. Sur l'appareil du client
+1. Créer un compte gratuit sur [NVIDIA Build](https://build.nvidia.com/) ou [NGC](https://ngc.nvidia.com/).
+2. Récupérer une clé API.
+3. Depuis le Mac, dans Unity ou dans le code web, envoyer l'audio du professeur de langue à NVIDIA avec cette clé. Les serveurs calculent les mouvements des lèvres et renvoient le résultat à l'écran.
 
-Si l'animation tourne plus tard directement sur l'appareil de l'utilisateur (pour économiser les coûts de serveur), on n'utilise pas le logiciel lourd Audio2Face.
+## Quand l'application est en ligne
 
-Le SDK de NVIDIA permet d'exporter uniquement le réseau de neurones entraîné sous la forme d'un fichier de quelques mégaoctets. Ce fichier est intégré directement dans l'application. Elle calcule alors le mouvement des lèvres localement sur le téléphone, sans nécessiter l'installation d'Audio2Face par l'utilisateur.
+Payant à l'usage, à partir de l'ouverture au public. Le tarif des API NIM suit l'utilisation des cartes graphiques dans le cloud, à la microseconde.
+
+| Poste | Montant |
+| --- | --- |
+| Animation générée | environ 0,001 $ à 0,003 $ par minute |
+| Un élève, 10 heures de parole dans le mois | environ 1,20 $ |
+| Abonnement utilisateur | 20 $ par mois |
+
+Le coût Audio2Face est couvert par l'abonnement.
