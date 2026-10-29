@@ -52,3 +52,7 @@ Renvoyer toutes les anciennes images à chaque tour coûte cher : chez ce modèl
 On ne renvoie les pixels que du dernier message qui contenait des photos. Les photos des tours précédents sont retirées de la requête et remplacées par une phrase. La réponse déjà donnée par l'assistant reste dans l'historique : elle sert de description de ce que ces anciennes photos montraient, sans payer un nouvel envoi.
 
 La dernière photo, elle, reste dans l'historique envoyé. Une question de suivi sur cette photo fonctionne sans que l'utilisateur la joigne à nouveau. Dès qu'il joint une nouvelle photo, c'est celle-là qui devient la dernière, et les précédentes passent en texte.
+
+## Avatar
+
+L'animation du visage à partir de la voix passe par Audio2Face. Le téléchargement gratuit est ici : [Audio2Face](https://www.reallusion.com/iclone/nvidia-omniverse/Audio2Face.html#free-download).
