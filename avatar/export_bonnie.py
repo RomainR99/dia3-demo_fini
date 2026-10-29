@@ -1,12 +1,12 @@
 #avatar
-"""Exporte asset/Bonnie1.blend en GLB avec des clés de bouche.
+"""Exporte asset/Bonnie2.blend en GLB avec des clés de bouche.
 
 Le .blend n'a ni armature ni shape keys. Ce script en crée six, nommées
 comme les blendshapes ARKit qu'Audio2Face renvoie, puis écrit
 avatar/view/bonnie.glb pour l'affichage dans le navigateur.
 
     /Applications/Blender.app/Contents/MacOS/Blender --background \
-        asset/Bonnie1.blend --python avatar/export_bonnie.py
+        asset/Bonnie2.blend --python avatar/export_bonnie.py
 """
 
 import os

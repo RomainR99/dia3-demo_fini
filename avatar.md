@@ -12,7 +12,7 @@ Pour Bonnie, ces crédits suffisent à peaufiner l'avatar et à valider le code 
 
 ## Branchements dans l'application
 
-Bonnie est le fichier `asset/Bonnie1.blend`. Il n'a ni armature ni clés de forme. `avatar/export_bonnie.py` lui ajoute six clés de bouche (JawOpen, MouthClose, MouthFunnel, MouthPucker, MouthSmileLeft, MouthSmileRight) et écrit `avatar/view/bonnie.glb`.
+Bonnie est le fichier `asset/Bonnie2.blend`. Il n'a ni armature ni clés de forme. `avatar/export_bonnie.py` lui ajoute six clés de bouche (JawOpen, MouthClose, MouthFunnel, MouthPucker, MouthSmileLeft, MouthSmileRight) et écrit `avatar/view/bonnie.glb`.
 
 Les maillages affichés avaient un matériau gris. Les teintes sont sur `skin.001` (peau) et `hair.001` (cheveux). L'export les recopie dans les couleurs de sommets, sinon la page reste grise.
 
@@ -36,7 +36,7 @@ pip install --no-deps https://github.com/NVIDIA/Audio2Face-3D-Samples/raw/main/p
 Pour refaire le GLB après un changement du .blend :
 
 ```bash
-/Applications/Blender.app/Contents/MacOS/Blender --background asset/Bonnie1.blend --python avatar/export_bonnie.py
+/Applications/Blender.app/Contents/MacOS/Blender --background asset/Bonnie2.blend --python avatar/export_bonnie.py
 ```
 
 ## Pendant le développement

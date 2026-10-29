@@ -57,9 +57,26 @@
     let jeton = "";
     let depart = 0;
     let enCours = false;
-    let volumeActif = false;
+    let repos = { x: 0, y: 0, z: 0 };
+    let clignePivot = null;
+    let cligneDebut = 0;
+    let prochainCligne = 0;
     // #avatar — le jeton reçu du lecteur. Un rendu Streamlit plus ancien ne doit pas le remplacer.
     let jetonMessage = "";
+    // #avatar — calibration. JawOpen plafonne à 0,7 pour éviter l'effet « gobo ».
+    const CALIBRAGE = {
+      JawOpen: 0.7,
+      MouthClose: 0.4,
+      MouthFunnel: 0.35,
+      MouthPucker: 0.35,
+      MouthSmileLeft: 0.4,
+      MouthSmileRight: 0.4,
+    };
+    const SEUIL_BRUIT = 0.05;
+    const LISSAGE = 0.22;
+    let cible = {};
+    let courant = {};
+    let historique = [];
 
     function envoyer(type, data) {
       window.parent.postMessage(Object.assign({
@@ -93,6 +110,56 @@
       return avant.weights || {};
     }
 
+    function preparer(poids) {
+      // #avatar — échelle, plafond, puis coupe le souffle et le bruit de fond.
+      const brut = {};
+      let energie = 0;
+      Object.keys(poids || {}).forEach(function (nom) {
+        let valeur = Math.max(0, poids[nom] || 0);
+        if (nom === "JawOpen") {
+          valeur += ((poids.MouthLowerDownLeft || 0) + (poids.MouthLowerDownRight || 0)) * 0.2;
+        }
+        const gain = CALIBRAGE[nom] !== undefined ? CALIBRAGE[nom] : 0.4;
+        valeur = Math.min(gain, valeur * gain);
+        brut[nom] = valeur;
+        energie = Math.max(energie, valeur);
+      });
+      if (energie < SEUIL_BRUIT) return {};
+      return brut;
+    }
+
+    function viser(poids) {
+      // #avatar — moyenne glissante, puis le rendu interpole vers cette cible.
+      historique.push(preparer(poids));
+      if (historique.length > 4) historique.shift();
+      const noms = new Set();
+      historique.forEach(function (image) {
+        Object.keys(image).forEach(function (nom) { noms.add(nom); });
+      });
+      const moyen = {};
+      noms.forEach(function (nom) {
+        let somme = 0;
+        historique.forEach(function (image) { somme += image[nom] || 0; });
+        moyen[nom] = somme / historique.length;
+      });
+      cible = moyen;
+    }
+
+    function lisser(dt) {
+      const pas = 1 - Math.pow(1 - LISSAGE, Math.max(dt, 0.001) * 60);
+      const noms = new Set(Object.keys(cible).concat(Object.keys(courant)));
+      const applique = {};
+      noms.forEach(function (nom) {
+        const but = cible[nom] || 0;
+        const actuel = courant[nom] || 0;
+        let suivant = actuel + (but - actuel) * pas;
+        if (suivant < 0.004) suivant = 0;
+        courant[nom] = suivant;
+        if (suivant > 0) applique[nom] = suivant;
+      });
+      appliquer(applique);
+    }
+
     function appliquer(poids) {
       if (!modele) return;
       modele.traverse(function (objet) {
@@ -104,27 +171,23 @@
         Object.keys(dictionnaire).forEach(function (nom) {
           objet.morphTargetInfluences[dictionnaire[nom]] = poids[nom] || 0;
         });
-        if (dictionnaire.JawOpen !== undefined) {
-          const extra = ((poids.MouthLowerDownLeft || 0) + (poids.MouthLowerDownRight || 0)) * 0.35;
-          objet.morphTargetInfluences[dictionnaire.JawOpen] = Math.min(
-            1,
-            objet.morphTargetInfluences[dictionnaire.JawOpen] + extra
-          );
-        }
       });
     }
 
     function animer(instant) {
-      if (volumeActif || !jeton || !images.length) {
+      if (!jeton || !images.length) {
         enCours = false;
         return;
       }
       const temps = (instant - depart) / 1000;
       const poids = poidsA(temps);
-      if (poids) appliquer(poids);
+      if (poids) viser(poids);
       const fin = images[images.length - 1].time_code || 0;
       if (temps < fin + 0.15) requestAnimationFrame(animer);
-      else enCours = false;
+      else {
+        enCours = false;
+        viser({});
+      }
     }
 
     function lancer(nouveauJeton, nouvellesImages, suivreVideo) {
@@ -158,20 +221,76 @@
       camera.updateProjectionMatrix();
     }
 
-    function dessiner() {
+    function preparerClignement() {
+      // #avatar — les yeux se referment sur eux-mêmes. Pas de pastille plus grande que l'œil.
+      const yeux = modele.getObjectByName("eyes");
+      if (!yeux) return;
+      modele.updateMatrixWorld(true);
+      const centre = new THREE.Box3().setFromObject(yeux).getCenter(new THREE.Vector3());
+      clignePivot = new THREE.Group();
+      modele.add(clignePivot);
+      clignePivot.position.copy(centre);
+      modele.worldToLocal(clignePivot.position);
+      clignePivot.updateMatrixWorld(true);
+      const pupilles = [];
+      modele.traverse(function (objet) {
+        if (objet.name && objet.name.indexOf("Pupil") !== -1) pupilles.push(objet);
+      });
+      clignePivot.attach(yeux);
+      pupilles.forEach(function (pupille) { clignePivot.attach(pupille); });
+    }
+
+    function animerClignement(now) {
+      if (!clignePivot) return;
+      if (!prochainCligne) prochainCligne = now + 2400 + Math.random() * 2800;
+      if (!cligneDebut && now >= prochainCligne) cligneDebut = now;
+      let ferme = 0;
+      if (cligneDebut) {
+        const u = (now - cligneDebut) / 520;
+        if (u >= 1) {
+          cligneDebut = 0;
+          prochainCligne = now + 3400 + Math.random() * 4200;
+        } else {
+          const t = u < 0.38 ? u / 0.38 : (1 - u) / 0.62;
+          ferme = t * t * (3 - 2 * t);
+        }
+      }
+      clignePivot.scale.y = 1 - ferme * 0.42;
+    }
+
+    function attente(now) {
+      // #avatar — tête très lente, et un clignement de temps en temps.
+      const t = now / 1000;
+      modele.rotation.y = repos.y + Math.sin(t * 0.42) * 0.018;
+      modele.rotation.x = repos.x + Math.sin(t * 0.27) * 0.007;
+      animerClignement(now);
+    }
+
+    let horloge = performance.now();
+    function dessiner(now) {
+      const dt = Math.min(0.05, (now - horloge) / 1000);
+      horloge = now;
       ajusterTaille();
+      if (modele) {
+        attente(now);
+        lisser(dt);
+      }
       renderer.render(scene, camera);
       requestAnimationFrame(dessiner);
     }
 
     const chargeur = new GLTFLoader();
-    chargeur.load("bonnie.glb?v=5", function (gltf) {
+    chargeur.load("bonnie.glb?v=6", function (gltf) {
       modele = gltf.scene;
       scene.add(modele);
+      repos.x = modele.rotation.x;
+      repos.y = modele.rotation.y;
+      repos.z = modele.rotation.z;
       cadrer();
+      preparerClignement();
       if (images.length && jeton) {
         const poids = poidsA((performance.now() - depart) / 1000);
-        if (poids) appliquer(poids);
+        if (poids) viser(poids);
         etat.textContent = "Bonnie parle";
       } else {
         etat.textContent = "";
@@ -200,22 +319,22 @@
         appliquerMessage(data);
         return;
       }
-      // #avatar — le volume du lecteur ouvre la bouche pendant la lecture.
+      // #avatar — le volume ne remplace les blendshapes NVIDIA que s'il n'y en a pas.
       if (data.type === "bonnie-niveau") {
-        volumeActif = !!data.playing;
+        if (images.length) return;
         if (!data.playing) {
-          appliquer({ JawOpen: 0 });
+          viser({});
           etat.textContent = "";
           return;
         }
-        const jaw = Math.max(0, Math.min(0.7, data.jaw || 0));
-        appliquer({ JawOpen: jaw });
-        etat.textContent = jaw > 0.08 ? "Bonnie parle" : "";
+        const jaw = Math.max(0, data.jaw || 0);
+        viser(jaw < SEUIL_BRUIT ? {} : { JawOpen: jaw });
+        etat.textContent = jaw >= SEUIL_BRUIT ? "Bonnie parle" : "";
         return;
       }
       if (data.type !== "bonnie-temps" || !images.length || !data.playing) return;
       const poids = poidsA(data.time || 0);
-      if (poids) appliquer(poids);
+      if (poids) viser(poids);
     }
 
     window.addEventListener("message", surMessage);

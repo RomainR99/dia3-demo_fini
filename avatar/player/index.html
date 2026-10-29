@@ -70,7 +70,8 @@
         somme += v * v;
       }
       const rms = Math.sqrt(somme / data.length);
-      const jaw = Math.max(0, Math.min(0.7, (rms - 0.02) * 4));
+      // #avatar — sous ce seuil, le souffle et le bruit de fond ne comptent pas.
+      const jaw = Math.max(0, (rms - 0.05) * 3.2);
       pousser({ type: "bonnie-niveau", jaw: jaw, playing: true });
       suiviVolume = requestAnimationFrame(suivreVolume);
     }
