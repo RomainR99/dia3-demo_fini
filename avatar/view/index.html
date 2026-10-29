@@ -57,6 +57,9 @@
     let jeton = "";
     let depart = 0;
     let enCours = false;
+    let volumeActif = false;
+    // #avatar — le jeton reçu du lecteur. Un rendu Streamlit plus ancien ne doit pas le remplacer.
+    let jetonMessage = "";
 
     function envoyer(type, data) {
       window.parent.postMessage(Object.assign({
@@ -112,7 +115,7 @@
     }
 
     function animer(instant) {
-      if (!jeton || !images.length) {
+      if (volumeActif || !jeton || !images.length) {
         enCours = false;
         return;
       }
@@ -124,12 +127,18 @@
       else enCours = false;
     }
 
-    function lancer(nouveauJeton, nouvellesImages) {
-      if (!nouveauJeton || nouveauJeton === jeton) return;
+    function lancer(nouveauJeton, nouvellesImages, suivreVideo) {
+      if (!nouveauJeton) return;
+      const recues = nouvellesImages || [];
+      // #avatar — un rendu vide ne doit pas effacer une bouche déjà lancée.
+      if (!recues.length && images.length) return;
+      if (nouveauJeton === jeton && recues.length === images.length) return;
       jeton = nouveauJeton;
-      images = nouvellesImages || [];
+      images = recues;
       depart = performance.now();
       etat.textContent = images.length ? "Bonnie parle" : "";
+      // #avatar — pendant la vidéo, currentTime pilote la bouche. L'horloge interne la décalerait.
+      if (suivreVideo) return;
       if (!enCours) {
         enCours = true;
         requestAnimationFrame(animer);
@@ -156,23 +165,65 @@
     }
 
     const chargeur = new GLTFLoader();
-    chargeur.load("bonnie.glb?v=3", function (gltf) {
+    chargeur.load("bonnie.glb?v=5", function (gltf) {
       modele = gltf.scene;
       scene.add(modele);
       cadrer();
-      etat.textContent = "";
+      if (images.length && jeton) {
+        const poids = poidsA((performance.now() - depart) / 1000);
+        if (poids) appliquer(poids);
+        etat.textContent = "Bonnie parle";
+      } else {
+        etat.textContent = "";
+      }
     }, undefined, function () {
       etat.textContent = "Bonnie ne s'affiche pas. Le fichier bonnie.glb est introuvable.";
     });
     requestAnimationFrame(dessiner);
 
-    window.addEventListener("message", function (event) {
+    function appliquerMessage(data) {
+      jetonMessage = data.token || "";
+      lancer(jetonMessage, data.frames || [], data.sync === "video");
+    }
+
+    function surMessage(event) {
       const data = event.data;
-      if (!data || data.type !== "streamlit:render") return;
-      const args = data.args || {};
-      envoyer("streamlit:setFrameHeight", { height: 300 });
-      lancer(args.token || "", args.frames || []);
-    });
+      if (!data) return;
+      if (data.type === "streamlit:render") {
+        const args = data.args || {};
+        envoyer("streamlit:setFrameHeight", { height: 300 });
+        // #avatar — le rendu du haut de page porte les blendshapes après le calcul.
+        lancer(args.token || "", args.frames || [], args.sync === "video");
+        return;
+      }
+      if (data.type === "bonnie-frames") {
+        appliquerMessage(data);
+        return;
+      }
+      // #avatar — le volume du lecteur ouvre la bouche pendant la lecture.
+      if (data.type === "bonnie-niveau") {
+        volumeActif = !!data.playing;
+        if (!data.playing) {
+          appliquer({ JawOpen: 0 });
+          etat.textContent = "";
+          return;
+        }
+        const jaw = Math.max(0, Math.min(0.7, data.jaw || 0));
+        appliquer({ JawOpen: jaw });
+        etat.textContent = jaw > 0.08 ? "Bonnie parle" : "";
+        return;
+      }
+      if (data.type !== "bonnie-temps" || !images.length || !data.playing) return;
+      const poids = poidsA(data.time || 0);
+      if (poids) appliquer(poids);
+    }
+
+    window.addEventListener("message", surMessage);
+    window.parent.addEventListener("message", surMessage);
+
+    try {
+      if (window.parent.__bonnieFrames) appliquerMessage(window.parent.__bonnieFrames);
+    } catch (error) {}
 
     envoyer("streamlit:componentReady", { apiVersion: 1 });
   </script>

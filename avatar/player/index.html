@@ -28,13 +28,78 @@
       envoyer("streamlit:setComponentValue", { value: value, dataType: "json" });
     }
 
-    voix.addEventListener("play", function () {
-      if (ignore) {
-        ignore = false;
+    function pousser(paquet) {
+      // #avatar — le message direct atteint l'iframe de Bonnie. Le parent seul ne suffit pas.
+      try { window.parent.__bonnieFrames = paquet; } catch (error) {}
+      window.parent.postMessage(paquet, "*");
+      try {
+        const vues = window.parent.document.querySelectorAll('iframe[title="avatar.bonnie_view"]');
+        vues.forEach(function (vue) {
+          if (vue.contentWindow) vue.contentWindow.postMessage(paquet, "*");
+        });
+      } catch (error) {}
+    }
+
+    let contexte = null;
+    let analyseur = null;
+    let source = null;
+    let suiviVolume = 0;
+
+    function brancherVolume() {
+      if (source) return;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      contexte = new AudioCtx();
+      source = contexte.createMediaElementSource(voix);
+      analyseur = contexte.createAnalyser();
+      analyseur.fftSize = 512;
+      source.connect(analyseur);
+      analyseur.connect(contexte.destination);
+    }
+
+    function suivreVolume() {
+      if (!analyseur || voix.paused) {
+        pousser({ type: "bonnie-niveau", jaw: 0, playing: false });
         return;
       }
-      voix.pause();
-      valeur({ action: "play", id: args.speech_id, nonce: Date.now() });
+      const data = new Uint8Array(analyseur.fftSize);
+      analyseur.getByteTimeDomainData(data);
+      let somme = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        somme += v * v;
+      }
+      const rms = Math.sqrt(somme / data.length);
+      const jaw = Math.max(0, Math.min(0.7, (rms - 0.02) * 4));
+      pousser({ type: "bonnie-niveau", jaw: jaw, playing: true });
+      suiviVolume = requestAnimationFrame(suivreVolume);
+    }
+
+    function demarrerBouche() {
+      if ((args.frames || []).length) {
+        pousser({
+          type: "bonnie-frames",
+          token: (args.token || args.speech_id || "voix") + ":joue:" + Date.now(),
+          frames: args.frames,
+          sync: args.sync || "audio",
+        });
+      }
+      try {
+        brancherVolume();
+        if (contexte && contexte.state === "suspended") contexte.resume();
+      } catch (error) {}
+      cancelAnimationFrame(suiviVolume);
+      suiviVolume = requestAnimationFrame(suivreVolume);
+    }
+
+    voix.addEventListener("play", function () {
+      // #avatar — le son n'est plus mis en pause. La bouche suit le volume tout de suite.
+      if (ignore) ignore = false;
+      demarrerBouche();
+    });
+    voix.addEventListener("pause", function () {
+      cancelAnimationFrame(suiviVolume);
+      pousser({ type: "bonnie-niveau", jaw: 0, playing: false });
     });
 
     window.addEventListener("message", function (event) {
@@ -48,6 +113,13 @@
       }
       if (args.autoplay && args.token && args.token !== dejaJoue && args.token.indexOf(args.speech_id + ":") === 0) {
         dejaJoue = args.token;
+        // #avatar — Bonnie est déjà à l'écran. On lui envoie les blendshapes sans recréer le composant.
+        pousser({
+          type: "bonnie-frames",
+          token: args.token,
+          frames: args.frames || [],
+          sync: args.sync || "audio",
+        });
         ignore = true;
         voix.currentTime = 0;
         voix.play();

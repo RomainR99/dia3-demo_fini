@@ -18,6 +18,10 @@ Les maillages affichés avaient un matériau gris. Les teintes sont sur `skin.00
 
 L'avatar est affiché en haut de chaque page, y compris la connexion. Le lecteur du post remplace l'ancien `st.audio`. Un clic sur lecture envoie ce WAV à Audio2Face. La réponse vocale qui démarre toute seule fait le même appel avant de jouer le son.
 
+Le bouton lecture de la vidéo fait la même chose avec la piste son du mp4. Pendant le film, la bouche suit le temps de la vidéo.
+
+Avec « Réponse vocale » allumé, un nouveau post est lu dès qu'il apparaît. La bouche suit cette lecture. Allumer l'interrupteur alors qu'un post est déjà à l'écran le lit aussi.
+
 `avatar/audio2face.py` lit `NVIDIA_API_KEY` dans `.env`. La clé n'est pas dans le code. Le terminal qui a lancé Streamlit affiche la structure reçue : noms ARKit, nombre d'images, poids de la première image, et le maximum de JawOpen.
 
 Installation, depuis le dossier du projet, environnement activé :

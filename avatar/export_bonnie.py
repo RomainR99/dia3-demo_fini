@@ -9,7 +9,6 @@ avatar/view/bonnie.glb pour l'affichage dans le navigateur.
         asset/Bonnie1.blend --python avatar/export_bonnie.py
 """
 
-import math
 import os
 
 import bpy
@@ -56,9 +55,36 @@ def _cles(obj):
     return created
 
 
+def _lisse(valeur):
+    #avatar
+    valeur = min(1.0, max(0.0, valeur))
+    return valeur * valeur * (3.0 - 2.0 * valeur)
+
+
+def _zone_bouche(world, center):
+    #avatar
+    # La face regarde vers -Y. Z est le haut. Le poids s'estompe jusqu'aux joues.
+    dx = world.x - center.x
+    devant = center.y - world.y
+    bas = center.z - world.z
+    if devant < -0.0012:
+        return 0.0, 0.0, 0.0
+    face = _lisse((devant + 0.0012) / 0.0022)
+    cote = 1.0 - _lisse((abs(dx) - 0.0013) / 0.0020)
+    if face <= 0.0 or cote <= 0.0:
+        return 0.0, 0.0, 0.0
+    machoire = 0.0
+    if bas > 0.0:
+        ouvert = _lisse(min(1.0, bas / 0.00055))
+        menton = 1.0 - _lisse(max(0.0, (bas - 0.0020) / 0.0022))
+        machoire = ouvert * menton * cote * face
+    levre = _lisse(1.0 - min(1.0, abs(bas) / 0.00075)) * cote * face
+    return machoire, levre, dx
+
+
 def _bouche(head_name, teeth_name):
     #avatar
-    # Les lèvres sont les sommets de la tête les plus proches des dents.
+    # Toute la mâchoire descend ensemble. Un anneau de lèvres seul déchirait le visage.
     head = bpy.data.objects[head_name]
     teeth = bpy.data.objects[teeth_name]
     samples = _points(teeth, step=8)
@@ -68,45 +94,46 @@ def _bouche(head_name, teeth_name):
     touched = 0
     for index, vertex in enumerate(head.data.vertices):
         world = head.matrix_world @ vertex.co
-        nearest = min(samples, key=lambda point: (point - world).length)
-        distance = (nearest - world).length
-        # Devant les dents seulement : la face regarde vers -Y.
-        if distance > 0.00055 or world.y > nearest.y + 0.00015:
+        machoire, levre, dx = _zone_bouche(world, center)
+        if machoire <= 0.02 and levre <= 0.02:
             continue
-        falloff = 1.0 - distance / 0.00055
-        lower = world.z < nearest.z
-        offset = Vector((0.0, 0.0, 0.0))
-        if lower:
-            offset = Vector((0.0, -0.00015, -0.0016 * falloff))
-            keys["MouthClose"].data[index].co = inverse @ (world + Vector((0.0, 0.00005, 0.00045 * falloff)))
-        else:
-            offset = Vector((0.0, -0.00005, 0.00035 * falloff))
-        keys["JawOpen"].data[index].co = inverse @ (world + offset)
-        away = Vector((world.x - center.x, 0.0, world.z - center.z))
-        if away.length > 1e-8:
-            away.normalize()
+        # Après l'export, +Y du monde devient le bas de l'écran. Z avançait vers la caméra.
+        keys["JawOpen"].data[index].co = inverse @ (
+            world + Vector((0.0, 0.00062 * machoire, 0.0))
+        )
+        if levre > 0.02 and machoire > 0.0:
+            keys["MouthClose"].data[index].co = inverse @ (
+                world + Vector((0.0, -0.00028 * levre, 0.0))
+            )
+        signe = 1.0 if dx >= 0.0 else -1.0
         keys["MouthFunnel"].data[index].co = inverse @ (
-            world + (away * 0.00055 + Vector((0.0, -0.00035, 0.0))) * falloff
+            world + Vector((signe * 0.00016 * levre, 0.0, 0.0))
         )
         keys["MouthPucker"].data[index].co = inverse @ (
-            world + (-away * 0.0004 + Vector((0.0, 0.00015, 0.0))) * falloff
+            world + Vector((-signe * 0.00012 * levre, 0.0, 0.0))
         )
-        smile = Vector((0.0, 0.0, 0.0009 * falloff))
-        side = "MouthSmileLeft" if world.x < center.x else "MouthSmileRight"
-        keys[side].data[index].co = inverse @ (world + smile)
+        coin = _lisse(max(0.0, (abs(dx) - 0.00045) / 0.0011)) * levre
+        if coin > 0.02:
+            side = "MouthSmileLeft" if dx < 0.0 else "MouthSmileRight"
+            keys[side].data[index].co = inverse @ (
+                world + Vector((signe * 0.00008 * coin, -0.0002 * coin, 0.0))
+            )
         touched += 1
-    print(f"{head_name}: {touched} sommets de lèvres")
+    print(f"{head_name}: {touched} sommets de mâchoire")
 
     #avatar
-    # La mâchoire ouverte descend aussi les dents du bas.
     tooth_keys = _cles(teeth)
     dropped = 0
     inverse = teeth.matrix_world.inverted()
     for index, vertex in enumerate(teeth.data.vertices):
         world = teeth.matrix_world @ vertex.co
-        if world.z >= center.z:
+        bas = center.z - world.z
+        if bas <= 0.00005:
             continue
-        tooth_keys["JawOpen"].data[index].co = inverse @ (world + Vector((0.0, 0.0, -0.0011)))
+        poids = _lisse(min(1.0, bas / 0.00035))
+        tooth_keys["JawOpen"].data[index].co = inverse @ (
+            world + Vector((0.0, 0.0005 * poids, 0.0))
+        )
         dropped += 1
     print(f"{teeth_name}: {dropped} sommets de dents du bas")
 

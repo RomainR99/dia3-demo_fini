@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+</head>
+<body>
+  <script>
+    // #avatar — le bouton lecture de la vidéo prévient Python, puis la bouche suit currentTime
+    let args = { speech_id: "", token: "", autoplay: false };
+    let dejaJoue = "";
+    let suivi = false;
+
+    function envoyer(type, data) {
+      window.parent.postMessage(Object.assign({
+        isStreamlitMessage: true,
+        type: type,
+      }, data), "*");
+    }
+
+    function valeur(value) {
+      envoyer("streamlit:setComponentValue", { value: value, dataType: "json" });
+    }
+
+    function documents() {
+      const trouves = [window.parent.document];
+      window.parent.document.querySelectorAll("iframe").forEach(function (cadre) {
+        if (cadre === window.frameElement) return;
+        try {
+          if (cadre.contentDocument) trouves.push(cadre.contentDocument);
+        } catch (erreur) {
+          return;
+        }
+      });
+      return trouves;
+    }
+
+    function trouverVideo() {
+      const pages = documents();
+      for (let i = 0; i < pages.length; i++) {
+        const video = pages[i].querySelector("video");
+        if (video) return video;
+      }
+      return null;
+    }
+
+    function brancher(video) {
+      if (video.dataset.a2fBranched === "1") return;
+      video.dataset.a2fBranched = "1";
+      video.addEventListener("play", function () {
+        if (video.dataset.a2fIgnore === "1") {
+          video.dataset.a2fIgnore = "";
+          suivre(video);
+          return;
+        }
+        video.pause();
+        valeur({ action: "play", id: args.speech_id, nonce: Date.now() });
+      });
+      video.addEventListener("pause", function () {
+        window.parent.postMessage({ type: "bonnie-temps", time: video.currentTime, playing: false }, "*");
+      });
+    }
+
+    function suivre(video) {
+      if (suivi) return;
+      suivi = true;
+      function pas() {
+        const enCours = video && !video.paused && !video.ended;
+        window.parent.postMessage({
+          type: "bonnie-temps",
+          time: video ? video.currentTime : 0,
+          playing: enCours,
+        }, "*");
+        if (enCours) requestAnimationFrame(pas);
+        else suivi = false;
+      }
+      requestAnimationFrame(pas);
+    }
+
+    function relancer() {
+      const video = trouverVideo();
+      if (!video) return;
+      brancher(video);
+      if (args.autoplay && args.token && args.token !== dejaJoue && args.token.indexOf(args.speech_id + ":") === 0) {
+        dejaJoue = args.token;
+        video.dataset.a2fIgnore = "1";
+        video.currentTime = 0;
+        video.play();
+      }
+    }
+
+    window.addEventListener("message", function (event) {
+      const data = event.data;
+      if (!data || data.type !== "streamlit:render") return;
+      args = data.args || args;
+      envoyer("streamlit:setFrameHeight", { height: 0 });
+      relancer();
+      if (!trouverVideo()) setTimeout(relancer, 300);
+    });
+
+    envoyer("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>

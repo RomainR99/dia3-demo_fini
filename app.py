@@ -76,7 +76,7 @@ from gamma_client import GammaError, owner_key, refresh_generation, send_approve
 #romain7
 from video import VideoError, build_video
 #avatar
-from avatar import mount_avatar, play_speech, show_avatar
+from avatar import mount_avatar, play_speech, play_video, show_avatar
 
 # Départ du chrono : le script repart quand l'enregistrement vient d'être envoyé.
 run_started = time.perf_counter()
@@ -88,6 +88,11 @@ avatar_box = st.empty()
 mount_avatar(avatar_box)
 st.title(APP_TITLE)
 st.toggle("Réponse vocale", key="speak")
+#avatar
+# Le passage de coupé à allumé relit le post déjà affiché.
+if st.session_state.get("speak") and st.session_state.get("_speak_prev") is False:
+	st.session_state.speak_just_on = True
+st.session_state._speak_prev = bool(st.session_state.get("speak"))
 
 
 # Base de données
@@ -387,6 +392,26 @@ def _post_articles(user_id):
 	return rss + mail
 
 
+#avatar
+def _lire_post(text, autoplay):
+	"""Lit le brouillon. La lecture automatique ne part qu'une fois par texte."""
+	cached = st.session_state.get("post_wav") or {}
+	wav = cached.get("wav") if cached.get("text") == text else None
+	if wav is None and not autoplay:
+		return
+	if wav is None:
+		try:
+			with st.spinner("Lecture du post…"):
+				wav = speak(text)
+		except AgentError as error:
+			st.warning(str(error))
+			return
+		if not wav:
+			return
+		st.session_state.post_wav = {"text": text, "wav": wav}
+	play_speech(wav, autoplay=autoplay, key="post-voice")
+
+
 #romain3
 def _show_post(user_id):
 	"""Affiche le brouillon du sujet choisi et enregistre la version validée.
@@ -396,11 +421,14 @@ def _show_post(user_id):
 	de la vidéo. « Envoyer à Gamma » crée les slides et les sous-titres.
 	« Créer la vidéo » assemble images, voix du post et sous-titres.
 	"""
+	#avatar
+	just_on = bool(st.session_state.pop("speak_just_on", False))
 	topic = st.session_state.get("chosen_topic")
 	if not topic:
 		return
 	topic_key = topic.get("title") or ""
-	if st.session_state.get("post_for") != topic_key:
+	just_drafted = st.session_state.get("post_for") != topic_key
+	if just_drafted:
 		try:
 			with st.spinner("Rédaction du post…"):
 				text = draft_post(
@@ -426,6 +454,12 @@ def _show_post(user_id):
 	)
 	minutes = spoken_minutes(st.session_state.post_text)
 	st.caption(f"Environ {minutes:.1f} min à l'oral.".replace(".", ","))
+	#avatar
+	if st.session_state.get("speak") and st.session_state.get("post_text"):
+		_lire_post(
+			st.session_state.post_text,
+			autoplay=just_drafted or just_on,
+		)
 	if st.button("Enregistrer la version validée"):
 		try:
 			saved = save_post_edit(st.session_state.post_text)
@@ -478,7 +512,9 @@ def _show_post(user_id):
 				st.rerun()
 		video_path = sent.get("video_path") or ""
 		if video_path and os.path.isfile(video_path):
+			#avatar
 			st.video(video_path)
+			play_video(video_path)
 	elif st.session_state.get("validated_post"):
 		st.success("Version validée enregistrée. C'est elle qui partira en vidéo.")
 
